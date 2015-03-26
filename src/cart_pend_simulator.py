@@ -5,9 +5,9 @@ Kathleen Fitzsimons
 **modified from trep_omni spherical pendulum simulation
 
 This node runs a timer that looks up the TF from the base link of the omni to
-the end of the stylus. It then uses the x-portion of this pose to drive a trep simulation. The
-trep simulation then provides force feedback. The position of the pendulum is
-also published.
+the end of the stylus. It then uses the y-portion(right-left) of this pose to 
+drive a trep simulation. The trep simulation then provides force feedback. 
+The position of the cart and pendulum is also published.
 
 SUBSCRIBERS:
     - omni1_button (phantom_omni/PhantomButtonEvent)
@@ -40,6 +40,7 @@ import visualization_msgs.msg as VM
 ###################
 # NON-ROS IMPORTS #
 ###################
+import sactrep
 import trep
 from trep import tx, ty, tz, rx, ry, rz
 import numpy as np
@@ -54,14 +55,15 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
-Kz = 0.#100.0 #N/m
-Kx = 0.#25.0 #N/m
+Kz = 100.0 #N/m
+Kx = 25.0 #N/m
+SACEFFORT=1.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
-NQ = 5 ####number of configuration variables in the system
+NQ = 3 ####number of configuration variables in the system
 NU = 1 ####number of inputs in the system
 
 def build_system():
@@ -77,7 +79,47 @@ def build_system():
     trep.forces.Damping(system, B)
     return system
 
+def proj_func(x): #angle wrapping function
+    x[2] = np.fmod(x[2]+np.pi, 2.0*np.pi)
+    if(x[2] < 0):
+        x[2] = x[2]+2.0*np.pi
+    x[2] = x[2] - np.pi
 
+def xdes_func(t, x, xdes):
+    xdes=np.pi
+
+def build_sac_control(self):
+    self.sactrepsys = trep.System()
+    frames = [
+        ty('yc',name=CARTFRAME, mass=M), [
+            rx('theta', name="pendShoulder"), [
+                tz(-L, name=MASSFRAME, mass=M)]]]
+    self.sactrepsys.import_frames(frames)
+    trep.potentials.Gravity(self.sactrepsys, (0,0,-g))
+    trep.forces.Damping(self.sactrepsys, B)
+    trep.forces.ConfigForce(self.sactrepsys,"yc","cart_force")
+    sacsys=sactrep.Sac(self.sactrepsys)
+    sacsys.T = 1.2
+    sacsys.lam = -5
+    sacsys.maxdt = 0.2
+    sacsys.ts = 0.0167
+    sacsys.usat = [[1, -1]]
+    sacsys.calc_tm = 0.0
+    sacsys.u2search = False
+    sacsys.Q = np.diag([100,200,50,0]) # x,th,xd,thd
+    sacsys.P = 0*np.diag([0,0,0,0])
+    sacsys.R = 0.3*np.identity(1)
+    sacsys.set_proj_func(proj_func)
+    sacsys.x_des = np.pi #sacsys.set_xdes_func(xdes_func)
+    #sacsys.init()
+    return sacsys
+
+def compute_control(self):
+    self.sactrepsys.q = self.system.q[0:2] # set initial conditions:
+    self.sactrepsys.dq = self.system.dq[0:2]
+    self.sacsys.init()
+    self.sacsys.step()
+    return self.sactrepsys.u
     
 class PendSimulator:
 
@@ -110,7 +152,7 @@ class PendSimulator:
         self.mass_marker = VM.Marker()
         self.mass_marker.action = VM.Marker.ADD
         self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME # for some reason rviz warns about non-qualified names without namespace
+        self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
         self.mass_marker.lifetime = rospy.Duration(5*DT)
         self.mass_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.mass_marker.type = VM.Marker.SPHERE
@@ -136,6 +178,7 @@ class PendSimulator:
         
     def setup_integrator(self):
         self.system = build_system()
+        self.sacsys = build_sac_control(self)
         self.mvi = trep.MidpointVI(self.system)
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -152,8 +195,9 @@ class PendSimulator:
             return
         self.x0 = position[0]
         self.z0 = position[2]
-        self.q0 = np.array((position[1],0.2,position[1])) 
-        self.mvi.initialize_from_state(0, self.q0, np.zeros(self.system.nQd)) 
+        self.q0 = np.array((position[1],np.pi-0.1,position[1]))
+        self.dq0 = np.zeros(self.system.nQd) 
+        self.mvi.initialize_from_state(0, self.q0, self.dq0) 
         return
 
     
@@ -177,10 +221,13 @@ class PendSimulator:
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         # step integrator:
         try:
-            self.mvi.step(self.mvi.t2 + DT, k2=ucont)
+            self.mvi.step(self.mvi.t2 + DT, k2=ucont) 
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
+        #compute the SAC control
+        self.usac=compute_control(self)
+        rospy.loginfo("SAC control: %s"%self.usac)
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -244,13 +291,15 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = self.system.lambda_()
+        lam = 0. #self.system.lambda_()
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0])
         fz = np.array([0,0,Kz*(self.z0-position2[2])])
-        fvectemp = np.add(flam, fz)
-        fvec = np.add(fvectemp, fx)
+        fsac = np.array([0.,SACEFFORT*self.usac,0.])
+        ftemp = np.add(flam, fz)
+        ftemp2 = np.add(ftemp, fx)
+        fvec = np.add(ftemp2, fsac)
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
