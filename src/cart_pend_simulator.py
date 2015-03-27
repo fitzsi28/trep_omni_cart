@@ -52,12 +52,12 @@ import copy
 ####################
 DT = 1/100.
 M = 0.05 #kg
-L = 0.5 # m
+L = 0.75 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
-Kz = 100.0 #N/m
-Kx = 25.0 #N/m
-SACEFFORT=1.0
+Kz = 5.0 #N/m
+Kx = 5.0 #N/m
+SACEFFORT=0.3
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -66,7 +66,7 @@ CARTFRAME = "cart"
 NQ = 3 ####number of configuration variables in the system
 NU = 1 ####number of inputs in the system
 
-def build_system():
+def build_system(): #simulated trep system
     system = trep.System()
     frames = [
         ty('ys', name='y-stylus', kinematic=True),
@@ -77,18 +77,19 @@ def build_system():
     trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
     trep.forces.Damping(system, B)
+    #trep.forces.ConfigForce(system,'yc','cart_force')
     return system
 
 def proj_func(x): #angle wrapping function
-    x[2] = np.fmod(x[2]+np.pi, 2.0*np.pi)
-    if(x[2] < 0):
-        x[2] = x[2]+2.0*np.pi
-    x[2] = x[2] - np.pi
+    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
+    if(x[1] < 0):
+        x[1] = x[1]+2.0*np.pi
+    x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes=np.pi
+    xdes[1]=np.pi
 
-def build_sac_control(self):
+def build_sac_control(self): #build secondary trep system with force inputs
     self.sactrepsys = trep.System()
     frames = [
         ty('yc',name=CARTFRAME, mass=M), [
@@ -99,27 +100,25 @@ def build_sac_control(self):
     trep.forces.Damping(self.sactrepsys, B)
     trep.forces.ConfigForce(self.sactrepsys,"yc","cart_force")
     sacsys=sactrep.Sac(self.sactrepsys)
-    sacsys.T = 1.2
+    sacsys.T = 0.05
     sacsys.lam = -5
     sacsys.maxdt = 0.2
-    sacsys.ts = 0.0167
+    sacsys.ts = DT
     sacsys.usat = [[1, -1]]
     sacsys.calc_tm = 0.0
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,50,0]) # x,th,xd,thd
+    sacsys.Q = np.diag([0,100,0,0]) # x,th,xd,thd
     sacsys.P = 0*np.diag([0,0,0,0])
     sacsys.R = 0.3*np.identity(1)
     sacsys.set_proj_func(proj_func)
-    sacsys.x_des = np.pi #sacsys.set_xdes_func(xdes_func)
-    #sacsys.init()
+    sacsys.set_xdes_func(xdes_func)
     return sacsys
 
 def compute_control(self):
-    self.sactrepsys.q = self.system.q[0:2] # set initial conditions:
-    self.sactrepsys.dq = self.system.dq[0:2]
-    self.sacsys.init()
-    self.sacsys.step()
-    return self.sactrepsys.u
+    self.sactrepsys.q = self.system.q[0:2]   #update secondary trep system 
+    self.sactrepsys.dq = self.system.dq[0:2] #with configuration of simulation
+    self.sacsys.calc_u()
+    return self.sacsys.controls
     
 class PendSimulator:
 
@@ -193,11 +192,13 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-        self.x0 = position[0]
-        self.z0 = position[2]
-        self.q0 = np.array((position[1],np.pi-0.1,position[1]))
+        self.x0 = position[0]  #get initial position for linear springs
+        self.z0 = position[2]  
+        self.q0 = np.array((position[1], np.pi,position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
-        self.mvi.initialize_from_state(0, self.q0, self.dq0) 
+        self.mvi.initialize_from_state(0, self.q0, self.dq0)
+        self.sactrepsys.q = self.mvi.q1[0:2] # initial sactrep with position
+        self.sacsys.init()
         return
 
     
@@ -216,18 +217,20 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-        # now we can use this position to integrate the trep simulation:
+       # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(NU)
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
+        
+        #compute the SAC control 
+        self.usac = compute_control(self)
+        rospy.loginfo("SAC control: %s"%self.usac)
+       
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT, k2=ucont) 
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-        #compute the SAC control
-        self.usac=compute_control(self)
-        rospy.loginfo("SAC control: %s"%self.usac)
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -291,10 +294,10 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = 0. #self.system.lambda_()
+        lam = 0 #self.system.lambda_() #ignore the constraint force
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
-        fx = np.array([Kx*(self.x0-position2[0]),0,0])
+        fx = np.array([Kx*(self.x0-position2[0]),0,0]) #linear springs to hold stylus on line
         fz = np.array([0,0,Kz*(self.z0-position2[2])])
         fsac = np.array([0.,SACEFFORT*self.usac,0.])
         ftemp = np.add(flam, fz)
