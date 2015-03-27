@@ -57,14 +57,14 @@ B = 0.001 # damping
 g = 9.81 #m/s^2
 Kz = 100.0 #N/m
 Kx = 25.0 #N/m
-SACEFFORT=1.0
+SACEFFORT=0.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 NQ = 3 ####number of configuration variables in the system
-NU = 1 ####number of inputs in the system
+NU = 2 ####number of inputs in the system
 
 def build_system():
     system = trep.System()
@@ -74,53 +74,40 @@ def build_system():
             rx('theta', name="pendShoulder"), [
                 tz(-L, name=MASSFRAME, mass=M)]]]
     system.import_frames(frames)
-    trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
+    trep.constraints.Distance(system, 'y-stylus', CARTFRAME, L)
+    #trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
     trep.forces.Damping(system, B)
+    trep.forces.ConfigForce(system,"yc","cart_force")
     return system
 
 def proj_func(x): #angle wrapping function
-    x[2] = np.fmod(x[2]+np.pi, 2.0*np.pi)
-    if(x[2] < 0):
-        x[2] = x[2]+2.0*np.pi
-    x[2] = x[2] - np.pi
+    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
+    if(x[1] < 0):
+        x[1] = x[1]+2.0*np.pi
+    x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
     xdes=np.pi
 
-def build_sac_control(self):
-    self.sactrepsys = trep.System()
-    frames = [
-        ty('yc',name=CARTFRAME, mass=M), [
-            rx('theta', name="pendShoulder"), [
-                tz(-L, name=MASSFRAME, mass=M)]]]
-    self.sactrepsys.import_frames(frames)
-    trep.potentials.Gravity(self.sactrepsys, (0,0,-g))
-    trep.forces.Damping(self.sactrepsys, B)
-    trep.forces.ConfigForce(self.sactrepsys,"yc","cart_force")
-    sacsys=sactrep.Sac(self.sactrepsys)
+def build_sac_control(system):
+    sacsys=sactrep.Sac(system)
     sacsys.T = 1.2
     sacsys.lam = -5
     sacsys.maxdt = 0.2
-    sacsys.ts = 0.0167
-    sacsys.usat = [[1, -1]]
-    sacsys.calc_tm = 0.0
+    sacsys.ts = DT
+    sacsys.usat = [[10, -10, -1., 1.]]
+    sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,50,0]) # x,th,xd,thd
-    sacsys.P = 0*np.diag([0,0,0,0])
-    sacsys.R = 0.3*np.identity(1)
+    sacsys.Q = np.diag([0,10,0,0,0,0]) # yc,th,ys,ycd,thd,ysd
+    sacsys.P = 0*np.diag([0,0,0,0,0,0])
+    sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
-    sacsys.x_des = np.pi #sacsys.set_xdes_func(xdes_func)
+    sacsys.x_des = np.array([0,np.pi,0,0,0,0]) #sacsys.set_xdes_func(xdes_func)
     #sacsys.init()
     return sacsys
 
-def compute_control(self):
-    self.sactrepsys.q = self.system.q[0:2] # set initial conditions:
-    self.sactrepsys.dq = self.system.dq[0:2]
-    self.sacsys.init()
-    self.sacsys.step()
-    return self.sactrepsys.u
-    
+
 class PendSimulator:
 
     def __init__(self):
@@ -178,7 +165,8 @@ class PendSimulator:
         
     def setup_integrator(self):
         self.system = build_system()
-        self.sacsys = build_sac_control(self)
+        #self.system2 = self.system
+        self.sacsys = build_sac_control(self.system)
         self.mvi = trep.MidpointVI(self.system)
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -195,9 +183,11 @@ class PendSimulator:
             return
         self.x0 = position[0]
         self.z0 = position[2]
-        self.q0 = np.array((position[1],np.pi-0.1,position[1]))
+        self.q0 = np.array((position[1]+L, 0.1, position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
-        self.mvi.initialize_from_state(0, self.q0, self.dq0) 
+        self.mvi.initialize_from_state(0, self.q0, self.dq0)
+        self.system.q = self.mvi.q1
+        self.sacsys.init()
         return
 
     
@@ -217,17 +207,26 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
         # now we can use this position to integrate the trep simulation:
-        ucont = np.zeros(NU)
+        ucont = np.zeros(self.mvi.nk)
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
+       
         # step integrator:
         try:
-            self.mvi.step(self.mvi.t2 + DT, k2=ucont) 
+            self.mvi.step(self.mvi.t2 + DT, u1=np.array([0.]),k2=ucont)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
+        
         #compute the SAC control
-        self.usac=compute_control(self)
-        rospy.loginfo("SAC control: %s"%self.usac)
+        #rospy.loginfo("dq before: %s"%self.system.dq)
+        self.sacsys.calc_u()
+        #rospy.loginfo("dq after: %s"%self.system.dq)
+        usac = self.sacsys.controls
+        tau_sac=self.sacsys.t_app
+        
+        rospy.loginfo("Control Effort: %s"%usac)
+        #rospy.loginfo("Application time: %s"%tau_sac)
+
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -291,15 +290,15 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = 0. #self.system.lambda_()
+        lam = self.system.lambda_()
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0])
         fz = np.array([0,0,Kz*(self.z0-position2[2])])
-        fsac = np.array([0.,SACEFFORT*self.usac,0.])
+        #fsac = np.array([0.,SACEFFORT*self.usac,0.])
         ftemp = np.add(flam, fz)
-        ftemp2 = np.add(ftemp, fx)
-        fvec = np.add(ftemp2, fsac)
+        #ftemp2 = np.add(ftemp, fx)
+        fvec = np.add(ftemp, fx)
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
