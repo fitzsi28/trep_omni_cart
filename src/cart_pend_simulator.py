@@ -217,9 +217,9 @@ class PendSimulator:
         for m in self.markers.markers:
             m.header.stamp = p.header.stamp
         self.mass_marker.pose = GM.Pose(position=GM.Point(*ptrans))
-        self.p1 = GM.Point(*ptrans)
-        self.p2 = GM.Point(*ptransc)
-        self.link_marker.points = [self.p1, self.p2]
+        p1 = GM.Point(*ptrans)
+        p2 = GM.Point(*ptransc)
+        self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         self.marker_pub.publish(self.markers)
 
@@ -245,7 +245,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = self.system.lambda_() #ignore the constraint force
+        lam = self.system.lambda_() #the constraint force
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0]) #linear springs to hold stylus on line
