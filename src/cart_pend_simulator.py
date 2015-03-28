@@ -40,7 +40,6 @@ import visualization_msgs.msg as VM
 ###################
 # NON-ROS IMPORTS #
 ###################
-import sactrep
 import trep
 from trep import tx, ty, tz, rx, ry, rz
 import numpy as np
@@ -57,7 +56,6 @@ B = 0.001 # damping
 g = 9.81 #m/s^2
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
-SACEFFORT=0.3
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -77,49 +75,9 @@ def build_system(): #simulated trep system
     trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
     trep.forces.Damping(system, B)
-    #trep.forces.ConfigForce(system,'yc','cart_force')
     return system
 
-def proj_func(x): #angle wrapping function
-    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
-    if(x[1] < 0):
-        x[1] = x[1]+2.0*np.pi
-    x[1] = x[1] - np.pi
-
-def xdes_func(t, x, xdes):
-    xdes[1]=np.pi
-
-def build_sac_control(self): #build secondary trep system with force inputs
-    self.sactrepsys = trep.System()
-    frames = [
-        ty('yc',name=CARTFRAME, mass=M), [
-            rx('theta', name="pendShoulder"), [
-                tz(-L, name=MASSFRAME, mass=M)]]]
-    self.sactrepsys.import_frames(frames)
-    trep.potentials.Gravity(self.sactrepsys, (0,0,-g))
-    trep.forces.Damping(self.sactrepsys, B)
-    trep.forces.ConfigForce(self.sactrepsys,"yc","cart_force")
-    sacsys=sactrep.Sac(self.sactrepsys)
-    sacsys.T = 0.05
-    sacsys.lam = -5
-    sacsys.maxdt = 0.2
-    sacsys.ts = DT
-    sacsys.usat = [[1, -1]]
-    sacsys.calc_tm = 0.0
-    sacsys.u2search = False
-    sacsys.Q = np.diag([0,100,0,0]) # x,th,xd,thd
-    sacsys.P = 0*np.diag([0,0,0,0])
-    sacsys.R = 0.3*np.identity(1)
-    sacsys.set_proj_func(proj_func)
-    sacsys.set_xdes_func(xdes_func)
-    return sacsys
-
-def compute_control(self):
-    self.sactrepsys.q = self.system.q[0:2]   #update secondary trep system 
-    self.sactrepsys.dq = self.system.dq[0:2] #with configuration of simulation
-    self.sacsys.calc_u()
-    return self.sacsys.controls
-    
+   
 class PendSimulator:
 
     def __init__(self):
@@ -177,7 +135,6 @@ class PendSimulator:
         
     def setup_integrator(self):
         self.system = build_system()
-        self.sacsys = build_sac_control(self)
         self.mvi = trep.MidpointVI(self.system)
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -197,8 +154,6 @@ class PendSimulator:
         self.q0 = np.array((position[1], np.pi,position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
-        self.sactrepsys.q = self.mvi.q1[0:2] # initial sactrep with position
-        self.sacsys.init()
         return
 
     
@@ -221,11 +176,7 @@ class PendSimulator:
         ucont = np.zeros(NU)
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
-        #compute the SAC control 
-        self.usac = compute_control(self)
-        rospy.loginfo("SAC control: %s"%self.usac)
-       
-        # step integrator:
+       # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT, k2=ucont) 
         except trep.ConvergenceError as e:
@@ -294,15 +245,13 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = 0 #self.system.lambda_() #ignore the constraint force
+        lam = self.system.lambda_() #ignore the constraint force
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0]) #linear springs to hold stylus on line
         fz = np.array([0,0,Kz*(self.z0-position2[2])])
-        fsac = np.array([0.,SACEFFORT*self.usac,0.])
         ftemp = np.add(flam, fz)
-        ftemp2 = np.add(ftemp, fx)
-        fvec = np.add(ftemp2, fsac)
+        fvec = np.add(ftemp, fx)
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
