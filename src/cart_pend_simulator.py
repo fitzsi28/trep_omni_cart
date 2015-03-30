@@ -52,11 +52,13 @@ import copy
 ####################
 DT = 1/100.
 M = 0.05 #kg
-L = 0.75 # m
+L = 0.5 # m
+d = 0. #constraint distance
 B = 0.001 # damping
 g = 9.81 #m/s^2
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
+MAXSTEP = 0.01 #m
 SACEFFORT=0.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -74,7 +76,6 @@ def build_system():
             rx('theta', name="pendShoulder"), [
                 tz(-L, name=MASSFRAME, mass=M)]]]
     system.import_frames(frames)
-    #trep.constraints.Distance(system, 'y-stylus', CARTFRAME, L)
     trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
     trep.forces.Damping(system, B)
@@ -91,27 +92,19 @@ def xdes_func(t, x, xdes):
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
-    sacsys.T = 1.2
+    sacsys.T = 0.25
     sacsys.lam = -5
     sacsys.maxdt = 0.2
     sacsys.ts = DT
-    sacsys.usat = [[-0.1, 0.1]]
+    sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
     sacsys.Q = np.diag([0,100,0,0,0,0]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
-    sacsys.x_des = sacsys.set_xdes_func(xdes_func)
+    sacsys.set_xdes_func(xdes_func)
     return sacsys
-
-def compute_force(mvi, sys, usac)
-    localsys = sys
-    localmvi = mvi
-    localmvi.system = localsys
-    localmvi.step(localmvi.t2 + DT, k2=usac)
-    return localsys.lambda_()
-    
 
 
 class PendSimulator:
@@ -162,10 +155,11 @@ class PendSimulator:
         self.cart_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 2
-
+        
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
+       
         return
     
         
@@ -173,6 +167,10 @@ class PendSimulator:
         self.system = build_system()
         self.sacsys = build_sac_control(self.system)
         self.mvi = trep.MidpointVI(self.system)
+        
+        # set up force feedback system
+        self.fbsys = self.system
+        self.fbmvi = trep.MidpointVI(self.fbsys)
         
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -192,6 +190,7 @@ class PendSimulator:
         self.q0 = np.array((position[1], 0.1, position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
+        self.fbmvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
         self.sacsys.init()
         return
@@ -217,14 +216,13 @@ class PendSimulator:
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
         #compute the SAC control
-        #rospy.loginfo("dq before: %s"%self.system.dq)
         self.sacsys.calc_u()
-        #rospy.loginfo("dq after: %s"%self.system.dq)
         usac = self.sacsys.controls
         tau_sac=self.sacsys.t_app
-        rospy.loginfo("Control Effort: %s"%usac)
+        
         #rospy.loginfo("Application time: %s"%tau_sac)
-        saclam = compute_control(self.mvi, self.system, usac)
+        saclam = self.fbsys.lambda_() #compute_force(self.mvi, self.system, usac)
+        rospy.loginfo("Config: %s"%saclam)
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT,k2=ucont)
