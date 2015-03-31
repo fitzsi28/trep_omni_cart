@@ -53,12 +53,11 @@ import copy
 DT = 1/100.
 M = 0.05 #kg
 L = 0.5 # m
-d = 0. #constraint distance
 B = 0.001 # damping
 g = 9.81 #m/s^2
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
-MAXSTEP = 0.01 #m
+MAXSTEP = 0.5 #m
 SACEFFORT=0.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -106,7 +105,7 @@ def build_sac_control(system):
     sacsys.set_xdes_func(xdes_func)
     return sacsys
 
-
+ 
 class PendSimulator:
 
     def __init__(self):
@@ -125,6 +124,7 @@ class PendSimulator:
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped)
+        self.sac_pub = rospy.Publisher("sac_point", PointStamped)
         self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray)
         self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback)
         self.br = tf.TransformBroadcaster()
@@ -156,10 +156,17 @@ class PendSimulator:
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 2
         
+        #sac marker
+        self.sac_marker = copy.deepcopy(self.mass_marker)
+        self.sac_marker.type = VM.Marker.SPHERE
+        self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 0.5])
+        self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+        self.cart_marker.id = 3
+
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
-       
+        self.markers.markers.append(self.sac_marker)
         return
     
         
@@ -169,7 +176,7 @@ class PendSimulator:
         self.mvi = trep.MidpointVI(self.system)
         
         # set up force feedback system
-        self.fbsys = self.system
+        self.fbsys = self.system #build_system()
         self.fbmvi = trep.MidpointVI(self.fbsys)
         
         # get the position of the omni in the trep frame
@@ -217,20 +224,21 @@ class PendSimulator:
         
         #compute the SAC control
         self.sacsys.calc_u()
-        usac = self.sacsys.controls
-        tau_sac=self.sacsys.t_app
+        #usac = self.sacsys.controls
+        #tau_sac=self.sacsys.t_app
         
-        #rospy.loginfo("Application time: %s"%tau_sac)
-        saclam = self.fbsys.lambda_() #compute_force(self.mvi, self.system, usac)
-        rospy.loginfo("Config: %s"%saclam)
+        
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT,k2=ucont)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-        
-        
+              
+        #rospy.loginfo("Application time: %s"%tau_sac)
+        #saclam = self.fbsys.lambda_() #compute_force(self.mvi, self.system, usac)
+        #rospy.loginfo("Config: %s"%usac[0]);
+        #rospy.loginfo("Config sys: %s"%self.system.q[0:1]);
 
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
@@ -263,6 +271,23 @@ class PendSimulator:
         qtransc = TR.quaternion_from_matrix(gwc)
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
        
+        ##sac sim   
+ 	psac = PointStamped()
+        psac.header.stamp = rospy.Time.now()
+        psac.header.frame_id = SIMFRAME
+        # get transform from trep world to cart frame:
+        gwsac = self.system.get_frame(CARTFRAME).g()
+        rospy.loginfo("gwsac: %s0"%gwsac)
+        ptransac = gwc[0:3, -1]
+        # print ptransc
+        pc.point.x = ptransc[0]
+        pc.point.y = ptransc[1]
+        pc.point.z = ptransc[2]
+        self.cart_pub.publish(pc)
+        # now we can send the transform:
+        qtransc = TR.quaternion_from_matrix(gwc)
+        self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
+
         # now we can publish the markers:
         for m in self.markers.markers:
             m.header.stamp = p.header.stamp
@@ -271,6 +296,7 @@ class PendSimulator:
         self.p2 = GM.Point(*ptransc)
         self.link_marker.points = [self.p1, self.p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
+        self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransac))
         self.marker_pub.publish(self.markers)
 
         # now we can render the forces:
@@ -295,7 +321,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = self.system.lambda_()
+        lam = self.fbsys.lambda_() #self.system.lambda_()
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0])
