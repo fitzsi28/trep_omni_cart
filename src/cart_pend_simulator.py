@@ -45,25 +45,27 @@ import trep
 from trep import tx, ty, tz, rx, ry, rz
 import numpy as np
 import copy
+import time
 
 
 ####################
 # GLOBAL CONSTANTS #
 ####################
-DT = 1/100.
+DT = 2./100.
 M = 0.05 #kg
 L = 0.5 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
-MAXSTEP = 0.5 #m
+MAXSTEP = 10. #m
 SACEFFORT=0.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
+SACFRAME = "SAC"
 NQ = 3 ####number of configuration variables in the system
 NU = 1 ####number of inputs in the system
 
@@ -152,16 +154,16 @@ class PendSimulator:
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
-        self.cart_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
+        self.cart_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 2
         
         #sac marker
         self.sac_marker = copy.deepcopy(self.mass_marker)
-        self.sac_marker.type = VM.Marker.SPHERE
-        self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 0.5])
-        self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
-        self.cart_marker.id = 3
+        self.sac_marker.type = VM.Marker.CUBE
+        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.5])
+        self.sac_marker.scale = GM.Vector3(*[0.08, 0.08, 0.08])
+        self.sac_marker.id = 3
 
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
@@ -174,11 +176,7 @@ class PendSimulator:
         self.system = build_system()
         self.sacsys = build_sac_control(self.system)
         self.mvi = trep.MidpointVI(self.system)
-        
-        # set up force feedback system
-        self.fbsys = self.system #build_system()
-        self.fbmvi = trep.MidpointVI(self.fbsys)
-        
+                    
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
             t = self.listener.getLatestCommonTime(SIMFRAME, CONTFRAME)
@@ -197,7 +195,6 @@ class PendSimulator:
         self.q0 = np.array((position[1], 0.1, position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
-        self.fbmvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
         self.sacsys.init()
         return
@@ -223,7 +220,10 @@ class PendSimulator:
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
         #compute the SAC control
+        #tic = time.clock()
         self.sacsys.calc_u()
+        #toc = time.clock()
+        rospy.loginfo ("SAC control: %s"%self.sacsys.controls)
         #usac = self.sacsys.controls
         #tau_sac=self.sacsys.t_app
         
@@ -276,18 +276,20 @@ class PendSimulator:
         psac.header.stamp = rospy.Time.now()
         psac.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
-        gwsac = self.system.get_frame(CARTFRAME).g()
-        rospy.loginfo("gwsac: %s0"%gwsac)
+        gwsac = self.system.get_frame(CARTFRAME).g() 
+        gtemp = np.zeros_like(gwsac)
+        gtemp.itemset((0,3), self.sacsys.controls[0])
+        gwsac = np.add(gwsac, gtemp)
         ptransac = gwc[0:3, -1]
         # print ptransc
-        pc.point.x = ptransc[0]
-        pc.point.y = ptransc[1]
-        pc.point.z = ptransc[2]
-        self.cart_pub.publish(pc)
+        psac.point.x = ptransac[0]
+        psac.point.y = ptransac[1]
+        psac.point.z = ptransac[2]
+        self.sac_pub.publish(psac)
         # now we can send the transform:
-        qtransc = TR.quaternion_from_matrix(gwc)
-        self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
-
+        qtransac = TR.quaternion_from_matrix(gwsac)
+        self.br.sendTransform(ptransac, qtransac, psac.header.stamp, SACFRAME, SIMFRAME)
+        #rospy.loginfo ("CARTFRAME: %s"%CARTFRAME)
         # now we can publish the markers:
         for m in self.markers.markers:
             m.header.stamp = p.header.stamp
@@ -321,7 +323,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = self.fbsys.lambda_() #self.system.lambda_()
+        lam = self.system.lambda_()
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0])
