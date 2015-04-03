@@ -90,6 +90,7 @@ Visualization Manager:
                     /stylus:
                       {}
           /trep_world:
+            /SAC:
             /cart:
              /pend_mass:
               {}

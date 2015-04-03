@@ -15,6 +15,7 @@ SUBSCRIBERS:
 PUBLISHERS:
     - mass_point (PointStamped)
     - cart_point (PointStamped)
+    - sac_point (PointStamped)
     - visualization_marker_array (MarkerArray)
     - omni1_force_feedback (phantom_omni/OmniFeedback)
 
@@ -51,14 +52,14 @@ import time
 ####################
 # GLOBAL CONSTANTS #
 ####################
-DT = 2./100.
+DT = 4./100.
 M = 0.05 #kg
 L = 0.5 # m
-B = 0.001 # damping
+B = 0.002 # damping
 g = 9.81 #m/s^2
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
-MAXSTEP = 10. #m
+MAXSTEP = 0.1 #m
 SACEFFORT=0.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -93,7 +94,7 @@ def xdes_func(t, x, xdes):
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
-    sacsys.T = 0.25
+    sacsys.T = 1.2
     sacsys.lam = -5
     sacsys.maxdt = 0.2
     sacsys.ts = DT
@@ -159,10 +160,10 @@ class PendSimulator:
         self.cart_marker.id = 2
         
         #sac marker
-        self.sac_marker = copy.deepcopy(self.mass_marker)
+        self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.CUBE
-        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.5])
-        self.sac_marker.scale = GM.Vector3(*[0.08, 0.08, 0.08])
+        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.75])
+        self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.sac_marker.id = 3
 
         self.markers.markers.append(self.mass_marker)
@@ -220,10 +221,10 @@ class PendSimulator:
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
         #compute the SAC control
-        #tic = time.clock()
+        tic = time.clock()
         self.sacsys.calc_u()
-        #toc = time.clock()
-        rospy.loginfo ("SAC control: %s"%self.sacsys.controls)
+        toc = time.clock()
+        rospy.loginfo ("Calc time: %s"%self.sacsys.t_app)
         #usac = self.sacsys.controls
         #tau_sac=self.sacsys.t_app
         
@@ -272,33 +273,32 @@ class PendSimulator:
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
        
         ##sac sim   
- 	psac = PointStamped()
-        psac.header.stamp = rospy.Time.now()
-        psac.header.frame_id = SIMFRAME
+ 	pu = PointStamped()
+        pu.header.stamp = rospy.Time.now()
+        pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
-        gwsac = self.system.get_frame(CARTFRAME).g() 
-        gtemp = np.zeros_like(gwsac)
-        gtemp.itemset((0,3), self.sacsys.controls[0])
-        gwsac = np.add(gwsac, gtemp)
-        ptransac = gwc[0:3, -1]
+        gtemp = np.zeros_like(gwc)
+        gtemp.itemset((1,3), self.sacsys.controls[0])
+        gwu = np.add(gwc, gtemp)
+        ptransu = gwu[0:3, -1]
         # print ptransc
-        psac.point.x = ptransac[0]
-        psac.point.y = ptransac[1]
-        psac.point.z = ptransac[2]
-        self.sac_pub.publish(psac)
+        pu.point.x = ptransu[0]
+        pu.point.y = ptransu[1]
+        pu.point.z = ptransu[2]
+        self.sac_pub.publish(pu)
         # now we can send the transform:
-        qtransac = TR.quaternion_from_matrix(gwsac)
-        self.br.sendTransform(ptransac, qtransac, psac.header.stamp, SACFRAME, SIMFRAME)
-        #rospy.loginfo ("CARTFRAME: %s"%CARTFRAME)
+        qtransu = TR.quaternion_from_matrix(gwu)
+        self.br.sendTransform(ptransu, qtransu, pu.header.stamp, SACFRAME, SIMFRAME)
+        
         # now we can publish the markers:
         for m in self.markers.markers:
             m.header.stamp = p.header.stamp
         self.mass_marker.pose = GM.Pose(position=GM.Point(*ptrans))
-        self.p1 = GM.Point(*ptrans)
-        self.p2 = GM.Point(*ptransc)
-        self.link_marker.points = [self.p1, self.p2]
+        p1 = GM.Point(*ptrans)
+        p2 = GM.Point(*ptransc)
+        self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-        self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransac))
+        self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransu))
         self.marker_pub.publish(self.markers)
 
         # now we can render the forces:
