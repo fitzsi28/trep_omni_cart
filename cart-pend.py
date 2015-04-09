@@ -2,6 +2,7 @@ import numpy as np
 import trep
 from trep import tx, ty, tz, rx, ry, rz
 import sactrep
+import matplotlib.pyplot as plt
 
 # set mass, length, and gravity:
 DT = 4./100.
@@ -9,7 +10,7 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 30.0 #m
+MAXSTEP = 15.0 #m
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -17,12 +18,12 @@ MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 
 # define initial config and velocity
-q0 = np.array([0, 0]) # x = [x_cart, theta]
-dq0 = np.array([0, 0])
+q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
+dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 20.0
+tf = 35.0
 
 # create system
 system = trep.System()
@@ -58,13 +59,13 @@ def xdes_func(t, x, xdes):
 sacsys = sactrep.Sac(system)
 
 sacsys.T = 1.2
-sacsys.lam = -10#5
+sacsys.lam = -15
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,200,100,0,100,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,100,0]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
@@ -80,22 +81,30 @@ Q = [system.q]
 sacsys.init()
 
 # run loop:
-q = np.hstack((system.q[0], system.dq[0],
+q = np.array((system.q[0], system.dq[0],
                system.q[1], system.dq[1]))
-u = np.array([system.u])
-T.append(sacsys.time)
-Q.append(system.q)
+u = np.array([sacsys.controls])
+T = [sacsys.time]
+Q = [sacsys.q]
+#T.append(sacsys.time)
+#Q.append(system.q)
 while sacsys.time < tf:
+    sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,100,0])
     sacsys.step()
-    q = np.vstack((q, np.hstack((system.q[0], system.dq[0],
-                                 system.q[1], system.dq[1]))))
-    u = np.vstack((u, system.u))
+    q = np.vstack((q, np.hstack((system.q[0], system.q[1],
+                                 system.q[2],system.dq[0]))))
+    u = np.vstack((u, sacsys.controls))
     T.append(sacsys.time)
     Q.append(system.q)
     if np.abs(sacsys.time%1)<DT:
         print "time = ",sacsys.time
-    
+        
+plt.plot(Q)
+plt.plot(U)
+plt.show()    
+np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
+np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
+
 # Visualize the system in action
 trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])
 
-np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
