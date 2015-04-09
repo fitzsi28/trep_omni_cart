@@ -1,6 +1,6 @@
 # ignore these files
 *.pcd
-
+*.csv
 # ignore these directories and the files in them.
 *~
 bin/
