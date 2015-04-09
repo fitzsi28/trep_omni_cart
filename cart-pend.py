@@ -23,7 +23,7 @@ dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 35.0
+tf = 15.0
 
 # create system
 system = trep.System()
@@ -32,7 +32,7 @@ frames = [
     ty('ys', name='y-stylus', kinematic=True),
     ty('yc',name=CARTFRAME, mass=M), [
         rx('theta', name="pendShoulder"), [
-            tz(-L, name=MASSFRAME, mass=2*M)]]]
+            tz(-L, name=MASSFRAME, mass=M)]]]
 # add frames to system
 system.import_frames(frames)
 # add gravity potential
@@ -58,14 +58,14 @@ def xdes_func(t, x, xdes):
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 1.2
-sacsys.lam = -15
+sacsys.T = 1.0
+sacsys.lam = -10
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,100,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
@@ -89,18 +89,20 @@ Q = [sacsys.q]
 #T.append(sacsys.time)
 #Q.append(system.q)
 while sacsys.time < tf:
-    sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,100,0])
+    sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0])
     sacsys.step()
     q = np.vstack((q, np.hstack((system.q[0], system.q[1],
                                  system.q[2],system.dq[0]))))
     u = np.vstack((u, sacsys.controls))
     T.append(sacsys.time)
-    Q.append(system.q)
+    qtemp = sacsys.q
+    proj_func(qtemp)
+    Q.append(qtemp)
     if np.abs(sacsys.time%1)<DT:
         print "time = ",sacsys.time
         
-plt.plot(Q)
-plt.plot(U)
+plt.plot(T,Q)
+plt.plot(T,u)
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")

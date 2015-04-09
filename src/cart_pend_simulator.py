@@ -94,14 +94,14 @@ def xdes_func(t, x, xdes):
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
-    sacsys.T = 1.2
-    sacsys.lam = -5
+    sacsys.T = 1.0
+    sacsys.lam = -10
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([0,100,0,0,0,0]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
@@ -220,6 +220,8 @@ class PendSimulator:
         ucont = np.zeros(self.mvi.nk)
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
+        #update the Q weight matrix
+        sacsys.Q = np.diag([np.power(self.system.q[0]/0.5,8),200,np.power(self.system.q[2]/0.5,8),0,50,0])
         #compute the SAC control
         tic = time.clock()
         self.sacsys.calc_u()
@@ -278,7 +280,7 @@ class PendSimulator:
         pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
         gtemp = np.zeros_like(gwc)
-        gtemp.itemset((1,3), self.sacsys.controls[0])
+        gtemp.itemset((1,3), self.sacsys.controls[0]*DT)
         gwu = np.add(gwc, gtemp)
         ptransu = gwu[0:3, -1]
         # print ptransc
