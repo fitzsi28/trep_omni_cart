@@ -59,7 +59,7 @@ B = 0.002 # damping
 g = 9.81 #m/s^2
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
-MAXSTEP = 0.1 #m
+MAXSTEP = 1.25 #m
 SACEFFORT=0.0
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -221,19 +221,19 @@ class PendSimulator:
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
         #update the Q weight matrix
-        sacsys.Q = np.diag([np.power(self.system.q[0]/0.5,8),200,np.power(self.system.q[2]/0.5,8),0,50,0])
+        self.sacsys.Q = np.diag([np.power(self.system.q[0]/0.5,8),200,np.power(self.system.q[2]/0.5,8),0,50,0])
         #compute the SAC control
         tic = time.clock()
         self.sacsys.calc_u()
         toc = time.clock()
-        rospy.loginfo ("Calc time: %s"%self.sacsys.t_app)
-        #usac = self.sacsys.controls
+        usac = (self.sacsys.controls*(self.sacsys.t_app[1]-self.sacsys.t_app[0]))+self.system.q[2]
+        rospy.loginfo ("position: %s"%usac)
         #tau_sac=self.sacsys.t_app
         
         
         # step integrator:
         try:
-            self.mvi.step(self.mvi.t2 + DT,k2=ucont)
+            self.mvi.step(self.mvi.t2 + DT,k2=usac)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
@@ -280,7 +280,7 @@ class PendSimulator:
         pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
         gtemp = np.zeros_like(gwc)
-        gtemp.itemset((1,3), self.sacsys.controls[0]*DT)
+        gtemp.itemset((1,3), self.sacsys.controls[0]*(self.sacsys.t_app[1]-self.sacsys.t_app[0]))
         gwu = np.add(gwc, gtemp)
         ptransu = gwu[0:3, -1]
         # print ptransc
