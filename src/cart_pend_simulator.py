@@ -50,11 +50,12 @@ import copy
 ####################
 # GLOBAL CONSTANTS #
 ####################
-DT = 1/100.
+DT = 4/100.
 M = 0.05 #kg
 L = 0.75 # m
-B = 0.001 # damping
+B = 0.002 # damping
 g = 9.81 #m/s^2
+MAXSTEP = 1.0 #m/s
 Kz = 5.0 #N/m
 Kx = 5.0 #N/m
 SACEFFORT=0.3
@@ -100,14 +101,14 @@ def build_sac_control(self): #build secondary trep system with force inputs
     trep.forces.Damping(self.sactrepsys, B)
     trep.forces.ConfigForce(self.sactrepsys,"yc","cart_force")
     sacsys=sactrep.Sac(self.sactrepsys)
-    sacsys.T = 0.05
+    sacsys.T = 1.0
     sacsys.lam = -5
     sacsys.maxdt = 0.2
     sacsys.ts = DT
-    sacsys.usat = [[1, -1]]
-    sacsys.calc_tm = 0.0
+    sacsys.usat = [[MAXSTEP, -MAXSTEP]]
+    sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([0,100,0,0]) # x,th,xd,thd
+    sacsys.Q = np.diag([100,200,0,50]) # x,th,xd,thd
     sacsys.P = 0*np.diag([0,0,0,0])
     sacsys.R = 0.3*np.identity(1)
     sacsys.set_proj_func(proj_func)
