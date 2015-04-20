@@ -10,7 +10,7 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 15.0 #m
+MAXSTEP =10.0 #m
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -23,7 +23,7 @@ dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 15.0
+tf = 30.0
 
 # create system
 system = trep.System()
@@ -65,7 +65,7 @@ sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([np.power(system.q[0]/2,8),200,np.power(system.q[2]/2,8),0,50,0]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
