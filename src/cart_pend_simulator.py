@@ -57,10 +57,10 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
-Kz = 5.0 #N/m
-Kx = 5.0 #N/m
-MAXSTEP = 1.25 #m
-SACEFFORT=0.0
+Kz = 0.0 #N/m
+Kx = 0.0 #N/m
+MAXSTEP = 20 #m/s^2
+SACEFFORT=0.01
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -95,13 +95,13 @@ def xdes_func(t, x, xdes):
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
     sacsys.T = 1.0
-    sacsys.lam = -10
+    sacsys.lam = -20
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,100,10,50,0]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([100,200,100,0,50,0]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
@@ -149,20 +149,20 @@ class PendSimulator:
         # link marker
         self.link_marker = copy.deepcopy(self.mass_marker)
         self.link_marker.type = VM.Marker.LINE_STRIP
-        self.link_marker.color = ColorRGBA(*[0.1, 0.1, 0.1, 1.0])
+        self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
         self.link_marker.scale = GM.Vector3(*[0.005, 0.05, 0.05])
         self.link_marker.id = 1
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
-        self.cart_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
+        self.cart_marker.color = ColorRGBA(*[0.1, 0.1, 0.1, 0.75])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 2
         
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.CUBE
-        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.75])
+        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.sac_marker.id = 3
 
@@ -220,30 +220,20 @@ class PendSimulator:
         ucont = np.zeros(self.mvi.nk)
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
-        #update the Q weight matrix
-        #self.sacsys.Q = np.diag([np.power(self.system.q[0]/0.5,8),200,np.power(self.system.q[2]/0.5,8),0,50,0])
         #compute the SAC control
-        tic = time.clock()
         self.sacsys.calc_u()
-        toc = time.clock()
         t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         self.usac = self.system.q[0]+(self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app)
-        rospy.loginfo ("position: %s"%self.usac)
-        #tau_sac=self.sacsys.t_app
+        
         
         
         # step integrator:
         try:
-            self.mvi.step(self.mvi.t2 + DT,k2=self.usac)
+            self.mvi.step(self.mvi.t2 + DT,k2=ucont)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
               
-        #rospy.loginfo("Application time: %s"%tau_sac)
-        #saclam = self.fbsys.lambda_() #compute_force(self.mvi, self.system, usac)
-        #rospy.loginfo("Config: %s"%usac[0]);
-        #rospy.loginfo("Config sys: %s"%self.system.q[0:1]);
-
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -280,10 +270,9 @@ class PendSimulator:
         pu.header.stamp = rospy.Time.now()
         pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
-        gwu = gwc
+	gwu = copy.copy(gwc)
         gwu.itemset((1,3), self.usac)
-        #gwu = np.add(gwc, gtemp)
-        ptransu = gwu[0:3, -1]
+	ptransu = gwu[0:3, -1]
         # print ptransc
         pu.point.x = ptransu[0]
         pu.point.y = ptransu[1]
@@ -326,14 +315,13 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = self.system.lambda_()
-        plam=np.array([0.,1.,0.])
-        flam = lam*plam #((plam)/np.linalg.norm(plam))
+        #lam = self.system.lambda_()
+        #plam=np.array([0.,1.,0.])
+        #flam = lam*plam #((plam)/np.linalg.norm(plam))
         fx = np.array([Kx*(self.x0-position2[0]),0,0])
         fz = np.array([0,0,Kz*(self.z0-position2[2])])
-        #fsac = np.array([0.,SACEFFORT*self.usac,0.])
-        ftemp = np.add(flam, fz)
-        #ftemp2 = np.add(ftemp, fx)
+        fsac = np.array([0.,SACEFFORT*self.sacsys.controls[0],0.])
+        ftemp = np.add(fsac, fz)
         fvec = np.add(ftemp, fx)
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned

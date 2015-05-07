@@ -10,7 +10,7 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 15.0 #m
+MAXSTEP = 20.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -23,7 +23,7 @@ dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 45.0
+tf = 30.0
 
 # create system
 system = trep.System()
@@ -66,7 +66,7 @@ sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,200,100,10,50,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([100,200,100,0,50,0]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
@@ -94,8 +94,9 @@ while sacsys.time < tf:
     sacsys.step()
     t_app = sacsys.t_app[1]-sacsys.t_app[0]
     xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
+    fsac = sacsys.controls[0]*M
     q = np.vstack((q, np.hstack((system.q[0], system.q[1],
-                                 system.dq[0], xcalc))))
+                                 system.lambda_(), fsac))))
     u = np.vstack((u, np.hstack([sacsys.controls, t_app])))
     T.append(sacsys.time)
     qtemp = sacsys.q
