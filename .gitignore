@@ -1,6 +1,7 @@
 # ignore these files
 *.pcd
 *.csv
+control_plot.nb
 # ignore these directories and the files in them.
 *~
 bin/
