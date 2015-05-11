@@ -23,7 +23,7 @@ dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 30.0
+tf = 15.0
 
 # create system
 system = trep.System()
@@ -94,7 +94,7 @@ while sacsys.time < tf:
     sacsys.step()
     t_app = sacsys.t_app[1]-sacsys.t_app[0]
     xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
-    fsac = sacsys.controls[0]*M
+    fsac = sacsys.controls[0]*M*-1 #SAC resistive force
     q = np.vstack((q, np.hstack((system.q[0], system.q[1],
                                  system.lambda_(), fsac))))
     u = np.vstack((u, np.hstack([sacsys.controls, t_app])))
