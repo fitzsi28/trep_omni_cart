@@ -6,7 +6,8 @@ Kathleen Fitzsimons
 
 This node runs a timer that looks up the TF from the base link of the omni to
 the end of the stylus. It then uses the y-portion(right-left) of this pose to 
-drive a trep simulation. The trep simulation then provides force feedback. 
+drive a trep simulation. SAC is used to provide force feedback and the 
+location of a green marker to guide the user.
 The position of the cart and pendulum is also published.
 
 SUBSCRIBERS:
@@ -57,18 +58,16 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
-Kz = 0.0 #N/m
-Kx = 0.0 #N/m
 MAXSTEP = 20 #m/s^2
-SACEFFORT=0.01
+SACEFFORT=0.02
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 SACFRAME = "SAC"
-NQ = 3 ####number of configuration variables in the system
-NU = 1 ####number of inputs in the system
+NQ = 3 #number of configuration variables in the system
+NU = 1 #number of inputs in the system
 
 def build_system():
     system = trep.System()
@@ -117,13 +116,13 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
+        self.fb_flag = False # SAC feedback flag
 
         # setup markers
         self.setup_markers()
         
         # setup publishers, subscribers, timers:
-        self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent,
-                                           self.buttoncb)
+        self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped)
@@ -163,6 +162,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.CUBE
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
+        self.sac_marker.lifetime = rospy.Duration(10*DT)
         self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.sac_marker.id = 3
 
@@ -191,9 +191,7 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-        self.x0 = position[0]
-        self.z0 = position[2]
-        self.q0 = np.array((position[1], 0.1, position[1]))
+        self.q0 = np.array((position[1], 0.0, position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
@@ -223,7 +221,8 @@ class PendSimulator:
         #compute the SAC control
         self.sacsys.calc_u()
         t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-        self.usac = self.system.q[0]+(self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app)
+          #convert kinematic acceleration to new position of SAC marker
+        self.usac = self.system.q[0]+((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))
         
         
         
@@ -290,12 +289,18 @@ class PendSimulator:
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-        self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransu))
-        self.marker_pub.publish(self.markers)
+        #self.marker_pub.publish(self.markers)
 
-        # now we can render the forces:
-        self.render_forces()
-        
+        # now we can render the forces and update the SAC Marker every other iteration:
+        if self.fb_flag == False:
+            self.render_forces()
+            self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransu))
+            self.fb_flag = True
+        else:
+            self.fb_flag = False
+
+        self.marker_pub.publish(self.markers)
+  
         return
         
 
@@ -305,7 +310,6 @@ class PendSimulator:
             t = self.listener.getLatestCommonTime(BASEFRAME, CONTFRAME)
             try:
                 position, quaternion = self.listener.lookupTransform(BASEFRAME, CONTFRAME, t)
-                position2, quaternion = self.listener.lookupTransform(SIMFRAME, CONTFRAME, t)
             except (tf.Exception):
                 rospy.logerr("Could not transform from "\
                              "{0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
@@ -315,33 +319,29 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        #lam = self.system.lambda_()
-        #plam=np.array([0.,1.,0.])
-        #flam = lam*plam #((plam)/np.linalg.norm(plam))
-        fx = np.array([Kx*(self.x0-position2[0]),0,0])
-        fz = np.array([0,0,Kz*(self.z0-position2[2])])
         fsac = np.array([0.,SACEFFORT*self.sacsys.controls[0],0.])
-        ftemp = np.add(fsac, fz)
-        fvec = np.add(ftemp, fx)
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
-        fvec2 = np.array([fvec[1], fvec[2], fvec[0]])
-        f = GM.Vector3(*fvec2)
+        fvec = np.array([fsac[1], fsac[2], fsac[0]])
+        f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
         self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
         
     def buttoncb(self, data):
-        if data.grey_button == 1 and data.white_button == 0:
+        if data.grey_button == 1 and data.white_button == 0 and self.running_flag == False:
             rospy.loginfo("Integration primed")
             self.grey_flag = True
-        elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True:
+        elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == False:
             # then we previously pushed only the grey button, and we just released it
             rospy.loginfo("Starting integration")
             self.setup_integrator()
             self.running_flag = True
-        else:
+        elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == True:
+            # then the sim is already running and nothing should happend
+            rospy.loginfo("Integration already running")
+        elif data.white_button == 1:
             rospy.loginfo("Integration stopped")
             self.grey_flag = False
             self.running_flag = False
