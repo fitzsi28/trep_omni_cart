@@ -50,12 +50,10 @@ import copy
 # GLOBAL CONSTANTS #
 ####################
 DT = 1/100.
-M = 0.05 #kg
-L = 0.75 # m
+M = 0.02 #kg
+L = 0.35 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
-Kz = 5.0 #N/m
-Kx = 5.0 #N/m
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -149,8 +147,7 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-        self.x0 = position[0]  #get initial position for linear springs
-        self.z0 = position[2]  
+        
         self.q0 = np.array((position[1], np.pi,position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
@@ -248,15 +245,11 @@ class PendSimulator:
         lam = self.system.lambda_() #the constraint force
         plam=np.array([0.,1.,0.])
         flam = lam*plam #((plam)/np.linalg.norm(plam))
-        fx = np.array([Kx*(self.x0-position2[0]),0,0]) #linear springs to hold stylus on line
-        fz = np.array([0,0,Kz*(self.z0-position2[2])])
-        ftemp = np.add(flam, fz)
-        fvec = np.add(ftemp, fx)
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
-        fvec2 = np.array([fvec[1], fvec[2], fvec[0]])
-        f = GM.Vector3(*fvec2)
+        fvec = np.array([flam[1], flam[2], flam[0]])
+        f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
         self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
