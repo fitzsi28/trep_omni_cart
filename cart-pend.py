@@ -10,7 +10,7 @@ M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
-MAXSTEP =10.0 #m
+MAXSTEP = 20.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -18,8 +18,9 @@ MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 
 # define initial config and velocity
-q0 = np.array([0, np.pi-0.01]) # x = [x_cart, theta]
-dq0 = np.array([0, 0])
+
+q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
+dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
@@ -29,6 +30,7 @@ tf = 15.0
 system = trep.System()
 # define frames
 frames = [
+    ty('ys', name='y-stylus', kinematic=True),
     ty('yc',name=CARTFRAME, mass=M), [
         rx('theta', name="pendShoulder"), [
             tz(-L, name=MASSFRAME, mass=M)]]]
@@ -38,7 +40,9 @@ system.import_frames(frames)
 trep.potentials.Gravity(system, (0,0,-g))
 # add a damping force on the cart
 trep.forces.Damping(system, B)
-trep.forces.ConfigForce(system,"yc","cart_force")
+
+#add a constraint
+trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
 
 
 #############
@@ -52,19 +56,20 @@ def proj_func(x):
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
+    xdes[0] = 0.0
     xdes[1] = np.pi
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 1.2
-sacsys.lam = -5 #gamma
+sacsys.T = 1.0
+sacsys.lam = -20
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,200,50,0]) # x,th,xd,thd
-sacsys.P = 0*np.diag([0,0,0,0])
+sacsys.Q = np.diag([100,200,125,0,50,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
 sacsys.set_proj_func(proj_func)
@@ -81,17 +86,19 @@ sacsys.init()
 # run loop:
 q = np.array((system.q[0], system.dq[0],
                system.q[1], system.dq[1]))
-u = np.array([sacsys.controls])
+u = np.array([sacsys.controls, sacsys.t_app[1]-sacsys.t_app[0]])
 T = [sacsys.time]
 Q = [sacsys.q]
-#T.append(sacsys.time)
-#Q.append(system.q)
+
 while sacsys.time < tf:
-    sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,50,0])
+    #sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0])
     sacsys.step()
+    t_app = sacsys.t_app[1]-sacsys.t_app[0]
+    xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
+    fsac = sacsys.controls[0]*M*-1 #SAC resistive force
     q = np.vstack((q, np.hstack((system.q[0], system.q[1],
-                                 system.dq[0],system.dq[1]))))
-    u = np.vstack((u, sacsys.controls))
+                                 system.lambda_(), fsac))))
+    u = np.vstack((u, np.hstack([sacsys.controls, t_app])))
     T.append(sacsys.time)
     qtemp = sacsys.q
     proj_func(qtemp)
