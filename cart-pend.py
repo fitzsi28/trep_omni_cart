@@ -10,7 +10,7 @@ M = 0.02 #kg
 L = 0.35 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 10.0 #m/s^2
+MAXSTEP = 20.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -61,15 +61,15 @@ def xdes_func(t, x, xdes):
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 1.2
+sacsys.T = 0.5
 sacsys.lam = -20
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,300,100,0,50,0]) # yc,th,ys,ycd,thd,ysd
-sacsys.P = 1*np.diag([0,0,0,0,0,0])
+sacsys.Q = np.diag([125,200,125,10,50,10]) # yc,th,ys,ycd,thd,ysd
+sacsys.P = 0*np.identity(6)
 sacsys.R = 0.3*np.identity(1)
 
 sacsys.set_proj_func(proj_func)
@@ -108,6 +108,7 @@ while sacsys.time < tf:
         
 plt.plot(T,Q)
 plt.plot(T,u)
+plt.legend(["yc","theta","ys","U"])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
