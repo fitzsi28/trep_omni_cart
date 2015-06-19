@@ -54,9 +54,9 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 DT = 4./100.
-M = 0.05 #kg
-L = 0.5 # m
-B = 0.002 # damping
+M = 0.02 #kg
+L = 0.35 # m
+B = 0.001 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20 #m/s^2
 SACEFFORT=0.02
@@ -94,15 +94,15 @@ def xdes_func(t, x, xdes):
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
-    sacsys.T = 1.0
+    sacsys.T = 0.5
     sacsys.lam = -20
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,125,0,50,0]) # yc,th,ys,ycd,thd,ysd
-    sacsys.P = 0*np.diag([0,0,0,0,0,0])
+    sacsys.Q = np.diag([500,200,150,10,50,10]) # yc,th,ys,ycd,thd,ysd
+    sacsys.P = 0*np.identity(6)
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
     sacsys.set_xdes_func(xdes_func)
