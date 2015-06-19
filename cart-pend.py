@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 
 # set mass, length, and gravity:
 DT = 4./100.
-M = 0.05 #kg
-L = 0.5 # m
-B = 0.002 # damping
+M = 0.02 #kg
+L = 0.35 # m
+B = 0.001 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 20.0 #m/s^2
+MAXSTEP = 10.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -61,15 +61,15 @@ def xdes_func(t, x, xdes):
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 1.0
+sacsys.T = 1.2
 sacsys.lam = -20
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,200,125,0,50,0]) # yc,th,ys,ycd,thd,ysd
-sacsys.P = 0*np.diag([0,0,0,0,0,0])
+sacsys.Q = np.diag([100,300,100,0,50,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.P = 1*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
 sacsys.set_proj_func(proj_func)
