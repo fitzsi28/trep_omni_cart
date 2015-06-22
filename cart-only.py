@@ -55,10 +55,10 @@ def proj_func(x):
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = np.sin(t)
-    xdes[1] = np.sin(t)
-    xdes[2] = np.cos(t)
-    xdes[3]= np.cos(t)
+    xdes[0] = 0.25*np.sin(t)
+    xdes[1] = 0.25*np.sin(t)
+    xdes[2] = 0.25*np.cos(t)
+    xdes[3]= 0.25*np.cos(t)
     
 
 sacsys = sactrep.Sac(system)
