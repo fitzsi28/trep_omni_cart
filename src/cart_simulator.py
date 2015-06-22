@@ -89,8 +89,8 @@ def proj_func(x): #angle wrapping function
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = signal.square(np.pi/2*t)
-    xdes[1] = signal.square(np.pi/2*t)
+    xdes[0] = 0.5*signal.square(np.pi/3*t)
+    xdes[1] = 0.5*signal.square(np.pi/3*t)
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
@@ -208,8 +208,8 @@ class PendSimulator:
         #compute the SAC control
         self.sacsys.calc_u()
         t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-          #convert kinematic acceleration to new position of SAC marker
-        self.usac = self.system.q[0]+2*((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))#amplified by 2
+          #convert kinematic acceleration to new position of SAC marker amplify the change in pos by 3
+        self.usac = self.system.q[0]+3*((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))
                    
         # step integrator:
         try:
@@ -264,14 +264,16 @@ class PendSimulator:
         #self.marker_pub.publish(self.markers)
 
         # now we can render the forces and update the SAC Marker every other iteration:
-        if self.fb_flag == False:
-            self.render_forces()
-            self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransu))
-            self.fb_flag = True
-        else:
-            self.fb_flag = False
-
+       # if self.fb_flag == False:
+        self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransu))
         self.marker_pub.publish(self.markers)
+        self.render_forces()
+       #     self.fb_flag = True
+       # else:
+       #     self.marker_pub.publish(self.markers)
+        #    self.fb_flag = False
+
+        
   
         return
         

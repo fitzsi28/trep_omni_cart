@@ -25,7 +25,7 @@ dq0 = np.array([0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 5.0
+tf = 10.0
 
 # create system
 system = trep.System()
@@ -56,8 +56,8 @@ def proj_func(x):
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = signal.square(np.pi/2*t)
-    xdes[1] = signal.square(np.pi/2*t)
+    xdes[0] = 0.5*signal.square(np.pi/3*t)
+    xdes[1] = 0.5*signal.square(np.pi/3*t)
     xdes[2] = 0#0.25*np.cos(t)
     xdes[3]= 0#.25*np.cos(t)
     
@@ -92,7 +92,7 @@ q = np.array((system.q[0], system.dq[0],
 u = np.hstack([sacsys.controls, sacsys.t_app[1]-sacsys.t_app[0]])
 T = [sacsys.time]
 Q = [sacsys.q]
-ref = [signal.square(np.pi*sacsys.time)]
+ref = [signal.square(np.pi/3*sacsys.time)]
 
 while sacsys.time < tf:
     #sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0])
@@ -107,7 +107,7 @@ while sacsys.time < tf:
     qtemp = sacsys.q
     proj_func(qtemp)
     Q.append(qtemp)
-    ref.append(signal.square(np.pi/2*sacsys.time))
+    ref.append(0.25*signal.square(np.pi/3*sacsys.time))
     if np.abs(sacsys.time%1)<DT:
         print "time = ",sacsys.time
         
