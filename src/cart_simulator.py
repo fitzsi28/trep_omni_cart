@@ -73,9 +73,8 @@ def build_system(): #simulated trep system
     system = trep.System()
     frames = [
         ty('ys', name='y-stylus', kinematic=True),
-        ty('yc',name=CARTFRAME, mass=M), [
-            rx('theta', name="pendShoulder"), [
-                tz(-L, name=MASSFRAME, mass=M)]]]
+        ty('yc',name=CARTFRAME, mass=M)]
+
     system.import_frames(frames)
     trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
@@ -90,20 +89,23 @@ def proj_func(x): #angle wrapping function
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-     xdes[1] = np.pi
+    xdes[0] = np.sin(t)
+    xdes[1] = np.sin(t)
+    xdes[2] = np.cos(t)
+    xdes[3]= np.cos(t)
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
-    sacsys.T = 1.0
-    sacsys.lam = -20
+    sacsys.T = 0.5
+    sacsys.lam = -5
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,125,0,50,0]) # yc,th,ys,ycd,thd,ysd
-    sacsys.P = 0*np.diag([0,0,0,0,0,0])
-    sacsys.R = 0.3*np.identity(NU)
+    sacsys.Q = np.diag([100,100,1,1]) # yc,th,ys,ycd,thd,ysd
+    sacsys.P = 0*np.diag([0,0,0,0])
+    sacsys.R = 0.3*np.identity(1)
     sacsys.set_proj_func(proj_func)
     sacsys.set_xdes_func(xdes_func)
     return sacsys
@@ -192,7 +194,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((position[1], 0.0, position[1]))
+        self.q0 = np.array((position[1], position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
