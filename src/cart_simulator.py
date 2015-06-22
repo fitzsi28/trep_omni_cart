@@ -8,13 +8,12 @@ This node runs a timer that looks up the TF from the base link of the omni to
 the end of the stylus. It then uses the y-portion(right-left) of this pose to 
 drive a trep simulation. SAC is used to provide force feedback and the 
 location of a green marker to guide the user.
-The position of the cart and pendulum is also published.
+The position of the cart is also published.
 
 SUBSCRIBERS:
     - omni1_button (phantom_omni/PhantomButtonEvent)
 
 PUBLISHERS:
-    - mass_point (PointStamped)
     - cart_point (PointStamped)
     - sac_point (PointStamped)
     - visualization_marker_array (MarkerArray)
@@ -48,6 +47,7 @@ from trep import tx, ty, tz, rx, ry, rz
 import numpy as np
 import copy
 import time
+from scipy import signal
 
 
 ####################
@@ -59,7 +59,7 @@ L = 0.5 # m
 B = 0.002 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20 #m/s^2
-SACEFFORT=0.02
+SACEFFORT=0.03
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -89,10 +89,8 @@ def proj_func(x): #angle wrapping function
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = 0.25*np.sin(t)
-    xdes[1] = 0.25*np.sin(t)
-    xdes[2] = 0.25*np.cos(t)
-    xdes[3] = 0.25*np.cos(t)
+    xdes[0] = signal.square(np.pi/2*t)
+    xdes[1] = signal.square(np.pi/2*t)
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
@@ -103,7 +101,7 @@ def build_sac_control(system):
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,100,1,1]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([100,100,0,0]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0])
     sacsys.R = 0.3*np.identity(1)
     sacsys.set_proj_func(proj_func)
@@ -138,23 +136,11 @@ class PendSimulator:
 
     def setup_markers(self):
         self.markers = VM.MarkerArray()
-        # mass marker
-        self.mass_marker = VM.Marker()
-        self.mass_marker.action = VM.Marker.ADD
-        self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
-        self.mass_marker.lifetime = rospy.Duration(5*DT)
-        self.mass_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
-        self.mass_marker.type = VM.Marker.SPHERE
-        self.mass_marker.id = 0
-        # link marker
-        self.link_marker = copy.deepcopy(self.mass_marker)
-        self.link_marker.type = VM.Marker.LINE_STRIP
-        self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
-        self.link_marker.scale = GM.Vector3(*[0.005, 0.05, 0.05])
-        self.link_marker.id = 1
-        #cart marker
-        self.cart_marker = copy.deepcopy(self.mass_marker)
+        # cart marker
+        self.cart_marker = VM.Marker()
+        self.cart_marker.action = VM.Marker.ADD
+        self.cart_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
+        self.cart_marker.lifetime = rospy.Duration(5*DT)
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.1, 0.1, 0.75])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
@@ -164,12 +150,9 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.CUBE
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(10*DT)
         self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.sac_marker.id = 3
 
-        self.markers.markers.append(self.mass_marker)
-        self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
         self.markers.markers.append(self.sac_marker)
         return
@@ -226,7 +209,7 @@ class PendSimulator:
         self.sacsys.calc_u()
         t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
           #convert kinematic acceleration to new position of SAC marker
-        self.usac = self.system.q[0]+((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))
+        self.usac = self.system.q[0]+2*((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))#amplified by 2
                    
         # step integrator:
         try:
@@ -236,20 +219,7 @@ class PendSimulator:
             return
               
         # if we successfully integrated, let's publish the point and the tf
-        p = PointStamped()
-        p.header.stamp = rospy.Time.now()
-        p.header.frame_id = SIMFRAME
-        # get transform from trep world to mass frame:
-        gwm = self.system.get_frame(MASSFRAME).g()
-        ptrans = gwm[0:3, -1]
-        # print ptrans
-        p.point.x = ptrans[0]
-        p.point.y = ptrans[1]
-        p.point.z = ptrans[2]
-        self.mass_pub.publish(p)
-        # now we can send the transform:
-        qtrans = TR.quaternion_from_matrix(gwm)
-        self.br.sendTransform(ptrans, qtrans, p.header.stamp, MASSFRAME, SIMFRAME)
+
         ##cart sim   
  	pc = PointStamped()
         pc.header.stamp = rospy.Time.now()
@@ -285,11 +255,11 @@ class PendSimulator:
         
         # now we can publish the markers:
         for m in self.markers.markers:
-            m.header.stamp = p.header.stamp
-        self.mass_marker.pose = GM.Pose(position=GM.Point(*ptrans))
-        p1 = GM.Point(*ptrans)
-        p2 = GM.Point(*ptransc)
-        self.link_marker.points = [p1, p2]
+            m.header.stamp = pc.header.stamp
+        #self.mass_marker.pose = GM.Pose(position=GM.Point(*ptrans))
+        #p1 = GM.Point(*ptrans)
+        #p2 = GM.Point(*ptransc)
+        #self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         #self.marker_pub.publish(self.markers)
 

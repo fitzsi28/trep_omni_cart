@@ -3,6 +3,7 @@ import trep
 from trep import tx, ty, tz, rx, ry, rz
 import sactrep
 import matplotlib.pyplot as plt
+from scipy import signal
 
 # set mass, length, and gravity:
 DT = 4./100.
@@ -24,7 +25,7 @@ dq0 = np.array([0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 15.0
+tf = 5.0
 
 # create system
 system = trep.System()
@@ -55,10 +56,10 @@ def proj_func(x):
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = 0.25*np.sin(t)
-    xdes[1] = 0.25*np.sin(t)
-    xdes[2] = 0.25*np.cos(t)
-    xdes[3]= 0.25*np.cos(t)
+    xdes[0] = signal.square(np.pi/2*t)
+    xdes[1] = signal.square(np.pi/2*t)
+    xdes[2] = 0#0.25*np.cos(t)
+    xdes[3]= 0#.25*np.cos(t)
     
 
 sacsys = sactrep.Sac(system)
@@ -70,7 +71,7 @@ sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,100,1,1]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([100,100,0,0]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
@@ -91,6 +92,7 @@ q = np.array((system.q[0], system.dq[0],
 u = np.hstack([sacsys.controls, sacsys.t_app[1]-sacsys.t_app[0]])
 T = [sacsys.time]
 Q = [sacsys.q]
+ref = [signal.square(np.pi*sacsys.time)]
 
 while sacsys.time < tf:
     #sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0])
@@ -105,13 +107,15 @@ while sacsys.time < tf:
     qtemp = sacsys.q
     proj_func(qtemp)
     Q.append(qtemp)
+    ref.append(signal.square(np.pi/2*sacsys.time))
     if np.abs(sacsys.time%1)<DT:
         print "time = ",sacsys.time
         
         
 plt.plot(T,Q)
 plt.plot(T,u[0:,0])
-plt.legend(["yc","ys","U"])
+plt.plot(T,ref)
+plt.legend(["yc","ys","U","ref"])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
