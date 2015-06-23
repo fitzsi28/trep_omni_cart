@@ -223,8 +223,8 @@ class PendSimulator:
         #compute the SAC control
         self.sacsys.calc_u()
         t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-          #convert kinematic acceleration to new position of SAC marker
-        self.usac = self.system.q[0]+((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))
+          #convert kinematic acceleration to new position of SAC marker, change in position amplified by 3
+        self.usac = self.system.q[0]+3*((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))
                    
         # step integrator:
         try:
