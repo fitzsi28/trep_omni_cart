@@ -68,7 +68,7 @@ sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([250,20,250,0,50,0]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([250,20,250,1,50,1]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.identity(6)
 sacsys.R = 0.3*np.identity(1)
 
@@ -106,7 +106,7 @@ while sacsys.time < tf:
     if np.abs(sacsys.time%1)<DT:
         print "time = ",sacsys.time
 
-print Q[0:,:-1]        
+       
 plt.plot(T,Q[0:,:-1])
 plt.plot(T,u[0:,0])
 plt.legend(["yc","theta","U"])
