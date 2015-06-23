@@ -94,14 +94,14 @@ def xdes_func(t, x, xdes):
 
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
-    sacsys.T = 1.0
+    sacsys.T = 0.5
     sacsys.lam = -20
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,125,0,50,0]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([250,20,250,1,50,1]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
