@@ -19,12 +19,12 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
+q0 = np.array([0, 0, 0]) # x = [y_cart, theta,y_stylus]
 dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 15.0
+tf = 30.0
 
 # create system
 system = trep.System()
@@ -68,7 +68,7 @@ sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([150,200,150,10,50,10]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([250,20,250,0,50,0]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.identity(6)
 sacsys.R = 0.3*np.identity(1)
 
@@ -100,15 +100,16 @@ while sacsys.time < tf:
                                  system.lambda_(), fsac))))
     u = np.vstack((u, np.hstack([sacsys.controls, t_app])))
     T.append(sacsys.time)
-    qtemp = sacsys.q
+    qtemp = system.q
     proj_func(qtemp)
-    Q.append(qtemp)
+    Q = np.vstack((Q,qtemp))
     if np.abs(sacsys.time%1)<DT:
         print "time = ",sacsys.time
-        
-plt.plot(T,Q)
-plt.plot(T,u)
-plt.legend(["yc","theta","ys","U"])
+
+print Q[0:,:-1]        
+plt.plot(T,Q[0:,:-1])
+plt.plot(T,u[0:,0])
+plt.legend(["yc","theta","U"])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
