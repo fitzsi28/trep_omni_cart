@@ -53,7 +53,7 @@ import time
 ####################
 # GLOBAL CONSTANTS #
 ####################
-DT = 4./100.
+DT = 2./100.
 M = 0.05 #kg
 L = 0.5 # m
 B = 0.002 # damping
@@ -221,7 +221,10 @@ class PendSimulator:
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
         
         #compute the SAC control
+        toc = time.time()
         self.sacsys.calc_u()
+        tic = time.time()
+        print (tic-toc)
         t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
           #convert kinematic acceleration to new position of SAC marker/change in position amplified by 3
         self.usac = self.system.q[0]+3*((self.system.dq[0]*t_app) + (0.5*self.sacsys.controls[0]*t_app*t_app))
