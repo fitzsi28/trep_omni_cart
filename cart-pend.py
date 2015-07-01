@@ -5,9 +5,9 @@ import sactrep
 import matplotlib.pyplot as plt
 
 # set mass, length, and gravity:
-DT = 4./100.
+DT = 2./100.
 M = 0.02 #kg
-L = 0.35 # m
+L = 0.5 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20.0 #m/s^2
@@ -68,7 +68,7 @@ sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([250,20,250,1,50,1]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([300,20,300,1,50,1]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.identity(6)
 sacsys.R = 0.3*np.identity(1)
 
