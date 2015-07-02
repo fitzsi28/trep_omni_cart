@@ -5,10 +5,10 @@ import sactrep
 import matplotlib.pyplot as plt
 
 # set mass, length, and gravity:
-DT = 2./100.
+DT = 3./100.
 M = 0.05 #kg
 L = 0.5 # m
-B = 0.002 # damping
+B = 0.001 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20.0 #m/s^2
 BASEFRAME = "base"
@@ -24,7 +24,7 @@ dq0 = np.array([0, 0, 0])
 
 # define time parameters:
 #dt = 0.0167
-tf = 30.0
+tf = 15.0
 
 # create system
 system = trep.System()
