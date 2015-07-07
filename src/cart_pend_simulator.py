@@ -156,15 +156,15 @@ class PendSimulator:
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 1.0])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
-        self.cart_marker.id = 2
+        self.cart_marker.id = 3
         
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
-        self.sac_marker.type = VM.Marker.CUBE
+        self.sac_marker.type = VM.Marker.ARROW
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.sac_marker.lifetime = rospy.Duration(10*DT)
-        self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
-        self.sac_marker.id = 3
+        self.sac_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
+        self.sac_marker.id = 2
 
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
@@ -226,8 +226,8 @@ class PendSimulator:
         #tic = time.time()
         #print (tic-toc)
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-          #convert kinematic acceleration to new position of SAC marker/change in position amplified by 3
-        self.usac = self.system.q[0]+3*((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
+          #convert kinematic acceleration to new position of SAC marker/change in position amplified by 6
+        self.usac = self.system.q[0]+6*((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
                    
         # step integrator:
         try:
@@ -297,7 +297,7 @@ class PendSimulator:
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
             self.render_forces()
-            self.sac_marker.pose = GM.Pose(position=GM.Point(*ptransu))
+            self.sac_marker.points = [GM.Point(*ptransc), GM.Point(*ptransu)]
             self.fb_flag = True
         else:
             self.fb_flag = False
