@@ -116,10 +116,11 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.fb_flag = True # SAC feedback flag
+        self.fb_flag = False # SAC feedback flag
         self.usac = 0 #setting up usac
         self.prevpos = 0
         self.prevsac = 0
+        
 
 
         # setup markers
@@ -166,18 +167,35 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(DT)
+        self.sac_marker.lifetime = rospy.Duration(0.5*DT)
         self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.075,0.2])
         p3 = np.array([0.0,-0.05,0.15])
         self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
         self.sac_marker.id = 2
+ 
+        # score marker
+        self.score_marker = copy.deepcopy(self.mass_marker)
+        self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
+        self.score_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
+        self.score_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+	self.score_marker.pose.position.x = 0;
+     	self.score_marker.pose.position.y = 0;
+  	self.score_marker.pose.position.z = 0.2;
+  	self.score_marker.pose.orientation.x = 0.0;
+  	self.score_marker.pose.orientation.y = 0.0;
+  	self.score_marker.pose.orientation.z = 0.0;
+  	self.score_marker.pose.orientation.w = 1.0;
+	self.score_marker.text = "0%"
+        self.score_marker.id = 4
+
 
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
         self.markers.markers.append(self.sac_marker)
+        self.markers.markers.append(self.score_marker)
         return
     
         
@@ -307,18 +325,20 @@ class PendSimulator:
         if self.fb_flag == False:
             if ((position[1]-self.prevpos)*(self.usac-self.prevsac)) > 0:
 		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-                self.sac_multi = 0              
+                self.sac_multi = 0
+                self.i=self.i+1              
             else:
                 self.sac_multi = SACEFFORT
                 self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-            #self.render_forces()
+            self.render_forces()
+            self.n=self.n+1
             self.fb_flag = True
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
             self.prevpos = position[1]
             self.prevsac = self.usac  
             self.fb_flag = False
-
+        self.score_marker.text = "Score = "+ str((self.i/self.n)*100)
         self.marker_pub.publish(self.markers)
   
         return
@@ -356,6 +376,8 @@ class PendSimulator:
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == False:
             # then we previously pushed only the grey button, and we just released it
             rospy.loginfo("Starting integration")
+            self.i = 0.0
+            self.n = 0.000001
             self.setup_integrator()
             self.running_flag = True
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == True:
