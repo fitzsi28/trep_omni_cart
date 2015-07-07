@@ -59,7 +59,7 @@ L = 0.5 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20 #m/s^2
-SACEFFORT=1
+SACEFFORT=0.05
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -116,7 +116,11 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.fb_flag = False # SAC feedback flag
+        self.fb_flag = True # SAC feedback flag
+        self.usac = 0 #setting up usac
+        self.prevpos = 0
+        self.prevsac = 0
+
 
         # setup markers
         self.setup_markers()
@@ -160,10 +164,14 @@ class PendSimulator:
         
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
-        self.sac_marker.type = VM.Marker.ARROW
+        self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(10*DT)
-        self.sac_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
+        self.sac_marker.lifetime = rospy.Duration(DT)
+        self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
+        p1 = np.array([0.0,0.0,0.1])
+        p2 = np.array([0.0,0.075,0.2])
+        p3 = np.array([0.0,-0.05,0.15])
+        self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
         self.sac_marker.id = 2
 
         self.markers.markers.append(self.mass_marker)
@@ -226,8 +234,8 @@ class PendSimulator:
         #tic = time.time()
         #print (tic-toc)
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-          #convert kinematic acceleration to new position of SAC marker/change in position amplified by 6
-        self.usac = self.system.q[0]+6*((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
+          #convert kinematic acceleration to new position of SAC marker/change in position
+        self.usac = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
                    
         # step integrator:
         try:
@@ -289,6 +297,7 @@ class PendSimulator:
             m.header.stamp = p.header.stamp
         self.mass_marker.pose = GM.Pose(position=GM.Point(*ptrans))
         p1 = GM.Point(*ptrans)
+        #print ptrans
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
@@ -296,10 +305,18 @@ class PendSimulator:
         #self.render_forces()
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
-            self.render_forces()
-            self.sac_marker.points = [GM.Point(*ptransc), GM.Point(*ptransu)]
+            if ((position[1]-self.prevpos)*(self.usac-self.prevsac)) > 0:
+		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
+                self.sac_multi = 0              
+            else:
+                self.sac_multi = SACEFFORT
+                self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+            #self.render_forces()
             self.fb_flag = True
         else:
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+            self.prevpos = position[1]
+            self.prevsac = self.usac  
             self.fb_flag = False
 
         self.marker_pub.publish(self.markers)
@@ -322,7 +339,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        fsac = np.array([0.,(SACEFFORT*self.sacsys.controls[0]*self.t_app),0.])
+        fsac = np.array([0.,(self.sac_multi*self.sacsys.controls[0]),0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
