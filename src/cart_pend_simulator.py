@@ -102,7 +102,7 @@ def build_sac_control(system):
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([250,20,250,1,50,1]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([100,200,100,1,50,1]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
@@ -152,25 +152,27 @@ class PendSimulator:
         self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
         self.link_marker.scale = GM.Vector3(*[0.005, 0.05, 0.05])
         self.link_marker.id = 1
-        #cart marker
-        self.cart_marker = copy.deepcopy(self.mass_marker)
-        self.cart_marker.type = VM.Marker.CUBE
-        self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 1.0])
-        self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
-        self.cart_marker.id = 3
-        
         #sac marker
-        self.sac_marker = copy.deepcopy(self.cart_marker)
+        self.sac_marker = copy.deepcopy(self.mass_marker)
         self.sac_marker.type = VM.Marker.ARROW
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.sac_marker.lifetime = rospy.Duration(10*DT)
         self.sac_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
         self.sac_marker.id = 2
+        #cart marker
+        self.cart_marker = copy.deepcopy(self.mass_marker)
+        self.cart_marker.type = VM.Marker.CUBE
+        self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
+        self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+        self.cart_marker.id = 3
+        
+        
 
         self.markers.markers.append(self.mass_marker)
+        self.markers.markers.append(self.sac_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
-        self.markers.markers.append(self.sac_marker)
+        
         return
     
         
