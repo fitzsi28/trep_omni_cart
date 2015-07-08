@@ -50,9 +50,9 @@ import copy
 # GLOBAL CONSTANTS #
 ####################
 DT = 1/100.
-M = 0.02 #kg
-L = 0.35 # m
-B = 0.001 # damping
+M = 0.1 #kg
+L = 1 # m
+B = 0.01 # damping
 g = 9.81 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
