@@ -42,9 +42,9 @@ import visualization_msgs.msg as VM
 ###################
 # NON-ROS IMPORTS #
 ###################
-import sactrep
 import trep
 from trep import tx, ty, tz, rx, ry, rz
+import sactrep
 import numpy as np
 import copy
 import time
@@ -53,10 +53,11 @@ import time
 ####################
 # GLOBAL CONSTANTS #
 ####################
+
 DT = 3./100.
-M = 0.05 #kg
-L = 0.5 # m
-B = 0.001 # damping
+M = 0.1 #kg
+L = 1 # m
+B = 0.01 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20 #m/s^2
 SACEFFORT=1
@@ -80,8 +81,8 @@ def build_system(): #simulated trep system
     trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
     trep.forces.Damping(system, B)
-    #trep.forces.ConfigForce(system,'yc','cart_force')
     return system
+
 
 def proj_func(x): #angle wrapping function
     x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
