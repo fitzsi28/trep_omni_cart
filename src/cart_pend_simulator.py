@@ -95,7 +95,7 @@ def xdes_func(t, x, xdes):
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
     sacsys.T = 0.5
-    sacsys.lam = -20
+    sacsys.lam = -10.0
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
@@ -323,7 +323,7 @@ class PendSimulator:
         #self.render_forces()
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
-            if ((position[1]-self.prevpos)*(self.usac-self.prevsac)) > 0:
+            if ((position[1]-self.prevpos)*(self.prevsac-self.prevpos)) > 0:
 		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
                 self.sac_multi = 0
                 self.i=self.i+1              
@@ -377,7 +377,7 @@ class PendSimulator:
             # then we previously pushed only the grey button, and we just released it
             rospy.loginfo("Starting integration")
             self.i = 0.0
-            self.n = 0.000001
+            self.n = 0.0000000001
             self.setup_integrator()
             self.running_flag = True
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == True:
