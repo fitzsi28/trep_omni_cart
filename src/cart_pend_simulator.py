@@ -59,7 +59,7 @@ L = 0.5 # m
 B = 0.001 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20 #m/s^2
-SACEFFORT=0.05
+SACEFFORT=0.03
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -146,7 +146,7 @@ class PendSimulator:
         self.mass_marker.action = VM.Marker.ADD
         self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
         self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
-        self.mass_marker.lifetime = rospy.Duration(5*DT)
+        self.mass_marker.lifetime = rospy.Duration(4*DT)
         self.mass_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.mass_marker.type = VM.Marker.SPHERE
         self.mass_marker.id = 0
@@ -338,7 +338,8 @@ class PendSimulator:
             self.prevpos = position[1]
             self.prevsac = self.usac  
             self.fb_flag = False
-        self.score_marker.text = "Score = "+ str((self.i/self.n)*100)
+        #self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
+	self.score_marker.text = "SAC force = "+ str((self.sac_multi*self.sacsys.controls[0]))
         self.marker_pub.publish(self.markers)
   
         return
@@ -376,8 +377,8 @@ class PendSimulator:
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == False:
             # then we previously pushed only the grey button, and we just released it
             rospy.loginfo("Starting integration")
-            self.i = 0.0
-            self.n = 0.0000000001
+            self.i = 1.0
+            self.n = 1.0
             self.setup_integrator()
             self.running_flag = True
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == True:

@@ -63,7 +63,7 @@ def xdes_func(t, x, xdes):
 sacsys = sactrep.Sac(system)
 
 sacsys.T = 0.5
-sacsys.lam = -10
+sacsys.lam = -20.0
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
