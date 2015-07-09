@@ -167,7 +167,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(0.5*DT)
+        self.sac_marker.lifetime = rospy.Duration(DT)
         self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.075,0.2])
@@ -324,9 +324,9 @@ class PendSimulator:
         #self.render_forces()
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
-            if ((position[1]-self.prevpos)*(self.prevsac-self.prevpos)) > 0:
+            if ((position[1]-self.prevpos)*(self.prevsac-self.prevpos)) > 0.0001:
 		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-                self.sac_multi = 0
+                self.sac_multi = 0.0
                 self.i=self.i+1              
             else:
                 self.sac_multi = SACEFFORT
@@ -340,7 +340,7 @@ class PendSimulator:
             self.prevsac = self.usac  
             self.fb_flag = False
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
-	#self.score_marker.text = "SAC force = "+ str((self.sac_multi*self.sacsys.controls[0]))
+	#self.score_marker.text = "Change in pos = "+ str(position[1]-self.prevpos)
         self.marker_pub.publish(self.markers)
   
         return
@@ -361,7 +361,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        fsac = np.array([0.,(self.sac_multi*self.sacsys.controls[0]),0.])
+        fsac = np.array([0.,(self.sac_multi*self.sacsys.controls[0]+0.01),0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
