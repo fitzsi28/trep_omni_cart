@@ -42,9 +42,9 @@ import visualization_msgs.msg as VM
 ###################
 # NON-ROS IMPORTS #
 ###################
-import sactrep
 import trep
 from trep import tx, ty, tz, rx, ry, rz
+import sactrep
 import numpy as np
 import copy
 import time
@@ -53,10 +53,11 @@ import time
 ####################
 # GLOBAL CONSTANTS #
 ####################
+
 DT = 3./100.
-M = 0.05 #kg
-L = 0.5 # m
-B = 0.001 # damping
+M = 0.1 #kg
+L = 1 # m
+B = 0.01 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20 #m/s^2
 SACEFFORT=0.03
@@ -80,8 +81,8 @@ def build_system(): #simulated trep system
     trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
     trep.potentials.Gravity(system, (0,0,-g))
     trep.forces.Damping(system, B)
-    #trep.forces.ConfigForce(system,'yc','cart_force')
     return system
+
 
 def proj_func(x): #angle wrapping function
     x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
@@ -95,13 +96,13 @@ def xdes_func(t, x, xdes):
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
     sacsys.T = 0.5
-    sacsys.lam = -10.0
+    sacsys.lam = -20.0
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([250,20,250,1,50,1]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([100,200,100,1,50,1]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
@@ -159,10 +160,9 @@ class PendSimulator:
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
-        self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 1.0])
+        self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 3
-        
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
@@ -190,12 +190,12 @@ class PendSimulator:
 	self.score_marker.text = "0%"
         self.score_marker.id = 4
 
-
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
         self.markers.markers.append(self.sac_marker)
         self.markers.markers.append(self.score_marker)
+
         return
     
         
@@ -252,9 +252,10 @@ class PendSimulator:
         #tic = time.time()
         #print (tic-toc)
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+
           #convert kinematic acceleration to new position of SAC marker/change in position
         self.usac = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
-                   
+                  
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT,k2=ucont)

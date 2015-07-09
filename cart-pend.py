@@ -7,9 +7,9 @@ import time
 
 # set mass, length, and gravity:
 DT = 3./100.
-M = 0.05 #kg
-L = 0.5 # m
-B = 0.001 # damping
+M = 0.1 #kg
+L = 1.0 # m
+B = 0.01 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20.0 #m/s^2
 BASEFRAME = "base"
@@ -20,7 +20,7 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
+q0 = np.array([0, 0.0, 0]) # x = [x_cart, theta]
 dq0 = np.array([0, 0, 0])
 
 # define time parameters:
@@ -62,14 +62,14 @@ def xdes_func(t, x, xdes):
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 0.5
+sacsys.T = 0.5#1.0
 sacsys.lam = -20.0
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([250,20,250,1,50,1]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([100,200,100,1,50,1]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
