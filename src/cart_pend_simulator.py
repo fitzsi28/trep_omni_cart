@@ -96,7 +96,7 @@ def xdes_func(t, x, xdes):
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
     sacsys.T = 0.5
-    sacsys.lam = -20.0
+    sacsys.lam = -10.0
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
@@ -218,7 +218,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((position[1], 0.0, position[1]))
+        self.q0 = np.array((4*position[1], 0.0, 4*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
@@ -244,7 +244,7 @@ class PendSimulator:
 
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = 4*position[1]
         
         #compute the SAC control
         #toc = time.time()
@@ -339,8 +339,8 @@ class PendSimulator:
             self.prevpos = position[1]
             self.prevsac = self.usac  
             self.fb_flag = False
-        #self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
-	self.score_marker.text = "SAC force = "+ str((self.sac_multi*self.sacsys.controls[0]))
+        self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
+	#self.score_marker.text = "SAC force = "+ str((self.sac_multi*self.sacsys.controls[0]))
         self.marker_pub.publish(self.markers)
   
         return
