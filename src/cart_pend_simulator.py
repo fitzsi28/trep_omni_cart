@@ -195,7 +195,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((position[1], 0.0, position[1]))
+        self.q0 = np.array((2*position[1], 0.0, 2*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
@@ -221,7 +221,7 @@ class PendSimulator:
 
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = 2*position[1]
         
         #compute the SAC control
         #toc = time.time()
