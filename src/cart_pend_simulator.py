@@ -59,6 +59,8 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
+Kp = 50.0
+SCALE = 2
 MAXSTEP = 20 #m/s^2
 SACEFFORT=0.03
 BASEFRAME = "base"
@@ -167,7 +169,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(DT)
+        self.sac_marker.lifetime = rospy.Duration(5*DT)
         self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.075,0.2])
@@ -218,7 +220,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((4*position[1], 0.0, 4*position[1]))
+        self.q0 = np.array((SCALE*position[1], 0.0, SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
@@ -244,7 +246,7 @@ class PendSimulator:
 
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = 4*position[1]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = SCALE*position[1]
         
         #compute the SAC control
         #toc = time.time()
@@ -324,19 +326,18 @@ class PendSimulator:
         #self.render_forces()
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
-            if ((position[1]-self.prevpos)*(self.prevsac-self.prevpos)) > 0.0001:
+            if ((SCALE*position[1]-self.prevpos)*(self.prevsac-self.prevpos)) > 0.0001:
 		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-                self.sac_multi = 0.0
                 self.i=self.i+1              
             else:
-                self.sac_multi = SACEFFORT
                 self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
             self.render_forces()
             self.n=self.n+1
             self.fb_flag = True
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-            self.prevpos = position[1]
+            self.render_forces()
+            self.prevpos = SCALE*position[1]
             self.prevsac = self.usac  
             self.fb_flag = False
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
@@ -361,7 +362,10 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        fsac = np.array([0.,(self.sac_multi*self.sacsys.controls[0]+0.01),0.])
+        if self.sacsys.controls[0]*(SCALE*position[1]-self.prevpos)< -0.0001:
+            fsac = np.array([0.,Kp*(self.prevpos-SCALE*position[1]),0.])
+        else:
+	    fsac = np.array([0.,0.,0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
