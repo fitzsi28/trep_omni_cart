@@ -44,6 +44,7 @@ import trep
 from trep import tx, ty, tz, rx, ry, rz
 import numpy as np
 import copy
+#import time
 
 
 ####################
@@ -54,6 +55,8 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
+Kp = 300
+WALL =0.1
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -155,6 +158,7 @@ class PendSimulator:
 
     
     def timercb(self, data):
+        #tic = time.time()
         if not self.running_flag:
             return
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -222,7 +226,8 @@ class PendSimulator:
 
         # now we can render the forces:
         self.render_forces()
-        
+        #toc = time.time()
+        print position[1]
         return
         
 
@@ -232,7 +237,6 @@ class PendSimulator:
             t = self.listener.getLatestCommonTime(BASEFRAME, CONTFRAME)
             try:
                 position, quaternion = self.listener.lookupTransform(BASEFRAME, CONTFRAME, t)
-                position2, quaternion = self.listener.lookupTransform(SIMFRAME, CONTFRAME, t)
             except (tf.Exception):
                 rospy.logerr("Could not transform from "\
                              "{0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
@@ -242,13 +246,21 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        lam = self.system.lambda_() #the constraint force
+        #lam = self.system.lambda_() #the constraint force
         plam=np.array([0.,1.,0.])
-        flam = lam*plam #((plam)/np.linalg.norm(plam))
+        #flam = lam*plam 
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
-        fvec = np.array([flam[1], flam[2], flam[0]])
+        #fvec = np.array([flam[1], flam[2], flam[0]])
+        if position[1] < -WALL:
+            fwall = Kp*(-WALL-position[1])
+        elif position[1]>WALL:
+            fwall = Kp*(WALL-position[1])
+        else:
+  	    fwall = 0.0
+        fwvec = fwall*plam
+        fvec = np.array([fwvec[1], fwvec[2], fwvec[0]]) 
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
         self.force_pub.publish(OmniFeedback(force=f, position=p))
