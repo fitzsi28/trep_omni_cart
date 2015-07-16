@@ -55,8 +55,10 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-Kp = 300
-WALL =0.1
+Kp = 300.0
+Kd = 1.0
+SCALE = 2
+WALL = SCALE*0.2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -87,6 +89,7 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
+        self.prev = np.array([0.,0.])
 
         # setup markers
         self.setup_markers()
@@ -151,7 +154,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
         
-        self.q0 = np.array((position[1], np.pi,position[1]))
+        self.q0 = np.array((SCALE*position[1], np.pi,SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         return
@@ -173,9 +176,13 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
+      
+        #update position array
+        self.prev = np.insert(self.prev,0, SCALE*position[1])
+        self.prev = np.delete(self.prev, -1)
        # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(NU)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = position[1]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = self.prev[0]#SCALE*position[1]
         
        # step integrator:
         try:
@@ -227,7 +234,7 @@ class PendSimulator:
         # now we can render the forces:
         self.render_forces()
         #toc = time.time()
-        print position[1]
+        print SCALE*position[1]
         return
         
 
@@ -253,10 +260,10 @@ class PendSimulator:
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
         #fvec = np.array([flam[1], flam[2], flam[0]])
-        if position[1] < -WALL:
-            fwall = Kp*(-WALL-position[1])
-        elif position[1]>WALL:
-            fwall = Kp*(WALL-position[1])
+        if SCALE*position[1] < -WALL:
+            fwall = Kp*(-WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT
+        elif SCALE*position[1]>WALL:
+            fwall = Kp*(WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT
         else:
   	    fwall = 0.0
         fwvec = fwall*plam
