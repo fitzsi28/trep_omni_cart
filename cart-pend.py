@@ -20,7 +20,7 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, 0.0, 0]) # x = [x_cart, theta]
+q0 = np.array([0, np.pi-0.001, 0]) # x = [x_cart, theta]
 dq0 = np.array([0, 0, 0])
 
 # define time parameters:

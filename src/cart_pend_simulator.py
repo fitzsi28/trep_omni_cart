@@ -59,9 +59,11 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-Kp = 50.0#100.0
-Kd = 1.0
+Kpw = 300.0
+Kp = 100.0
+Kd = 0.1
 SCALE = 2
+WALL = SCALE*0.2
 MAXSTEP = 20 #m/s^2
 SACEFFORT=0.03
 BASEFRAME = "base"
@@ -331,9 +333,9 @@ class PendSimulator:
         self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
-            if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) >= 0.0001:
+            if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 10**(-6):
 		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-                self.i=self.i+1  
+                self.i=self.i+1 
             else:
                 self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
             self.n=self.n+1
@@ -366,12 +368,18 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
-        # get force magnitude
-        if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 0.0001:
-            fsac = np.array([0.,0.,0.])
+        #Check safety condition
+        if SCALE*position[1] < -WALL:
+            fwall = Kpw*(-WALL-SCALE*position[1])#+Kd*(self.prev[1]-self.prev[0])/DT
+        elif SCALE*position[1]>WALL:
+            fwall = Kpw*(WALL-SCALE*position[1])#+Kd*(self.prev[1]-self.prev[0])/DT
         else:
-	    fsac = np.array([0.,Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT,0.])
-            print "TOTAL", Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT
+  	    fwall = 0.0
+        #get force magnitude
+        if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 10**(-6):
+            fsac = np.array([0.,0.+fwall,0.])
+        else:
+	    fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT,0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
