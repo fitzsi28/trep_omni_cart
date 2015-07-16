@@ -59,7 +59,8 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-Kp = 50.0
+Kp = 50.0#100.0
+Kd = 1.0
 SCALE = 2
 MAXSTEP = 20 #m/s^2
 SACEFFORT=0.03
@@ -123,6 +124,7 @@ class PendSimulator:
         self.sacpos = 0.
         self.prev = np.array([0.,0.,0.])
         self.prevsac = 0.
+        self.wall=0.
         
 
 
@@ -249,9 +251,9 @@ class PendSimulator:
 
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = self.prev[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = SCALE*position[1]#self.prev[0]
         
-
+        
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT,k2=ucont)
@@ -259,16 +261,7 @@ class PendSimulator:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
 
-         #compute the SAC control
-        #toc = time.time()
-        self.sacsys.calc_u()
-        #tic = time.time()
-        #print (tic-toc)
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-
-          #convert kinematic acceleration to new position of SAC marker/change in position
-        self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
-              
+                     
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -285,7 +278,7 @@ class PendSimulator:
         qtrans = TR.quaternion_from_matrix(gwm)
         self.br.sendTransform(ptrans, qtrans, p.header.stamp, MASSFRAME, SIMFRAME)
         ##cart sim   
- 	    pc = PointStamped()
+ 	pc = PointStamped()
         pc.header.stamp = rospy.Time.now()
         pc.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
@@ -301,13 +294,13 @@ class PendSimulator:
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
        
         ##sac sim   
- 	    pu = PointStamped()
+ 	pu = PointStamped()
         pu.header.stamp = rospy.Time.now()
         pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
-	    gwu = copy.copy(gwc)
+	gwu = copy.copy(gwc)
         gwu.itemset((1,3), self.sacpos)
-	    ptransu = gwu[0:3, -1]
+	ptransu = gwu[0:3, -1]
         # print ptransc
         pu.point.x = ptransu[0]
         pu.point.y = ptransu[1]
@@ -327,12 +320,20 @@ class PendSimulator:
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         
-
+        #compute the SAC control
+        #toc = time.time()
+        self.sacsys.calc_u()
+        #tic = time.time()
+        #print (tic-toc)
+        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        
+        #convert kinematic acceleration to new position of SAC marker/change in position
+        self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
         # now we can render the forces and update the SAC Marker every other iteration:
         if self.fb_flag == False:
-            if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 0.00001:
+            if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) >= 0.0001:
 		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-                self.i=self.i+1              
+                self.i=self.i+1  
             else:
                 self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
             self.n=self.n+1
@@ -366,10 +367,11 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         # get force magnitude
-        if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 0.00001:
+        if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 0.0001:
             fsac = np.array([0.,0.,0.])
         else:
-	    fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]),0.])
+	    fsac = np.array([0.,Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT,0.])
+            print "TOTAL", Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
