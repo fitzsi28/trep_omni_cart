@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import time
 
 # set mass, length, and gravity:
-DT = 3./100.
-M = 0.1 #kg
+DT = 1./100.
+M = 0.2 #kg
 L = 1.0 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 20.0 #m/s^2
+MAXSTEP = 35.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -20,7 +20,7 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, np.pi-0.001, 0]) # x = [x_cart, theta]
+q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
 dq0 = np.array([0, 0, 0])
 
 # define time parameters:
@@ -32,7 +32,7 @@ system = trep.System()
 # define frames
 frames = [
     ty('ys', name='y-stylus', kinematic=True),
-    ty('yc',name=CARTFRAME, mass=M), [
+    ty('yc',name=CARTFRAME, mass=0.001), [
         rx('theta', name="pendShoulder"), [
             tz(-L, name=MASSFRAME, mass=M)]]]
 # add frames to system
@@ -62,14 +62,14 @@ def xdes_func(t, x, xdes):
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 0.5#1.0
-sacsys.lam = -20.0
+sacsys.T = 1.2
+sacsys.lam = -5.
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
-sacsys.calc_tm = DT
+sacsys.calc_tm = 0.#DT
 sacsys.u2search = False
-sacsys.Q = np.diag([100,200,100,1,50,1]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([150,200,150,50,0,50]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
