@@ -50,15 +50,15 @@ import copy
 ####################
 # GLOBAL CONSTANTS #
 ####################
-DT = 1/100.
+DT = 1./100.
 M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-Kp = 300.0
-Kd = 1.0
-SCALE = 2
-WALL = SCALE*0.2
+SCALE = 8
+Kp = 400.0/SCALE
+Kd = 10.0/SCALE
+WALL = SCALE*0.1
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -206,7 +206,7 @@ class PendSimulator:
         qtrans = TR.quaternion_from_matrix(gwm)
         self.br.sendTransform(ptrans, qtrans, p.header.stamp, MASSFRAME, SIMFRAME)
         ##cart sim   
- 	pc = PointStamped()
+        pc = PointStamped()
         pc.header.stamp = rospy.Time.now()
         pc.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
@@ -234,7 +234,7 @@ class PendSimulator:
         # now we can render the forces:
         self.render_forces()
         #toc = time.time()
-        print SCALE*position[1]
+        #print SCALE*position[1]
         return
         
 
@@ -261,11 +261,12 @@ class PendSimulator:
         # with /trep_world or /base:
         #fvec = np.array([flam[1], flam[2], flam[0]])
         if SCALE*position[1] < -WALL:
-            fwall = Kp*(-WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT
+            fwall = Kp*(-WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])
+            print fwall
         elif SCALE*position[1]>WALL:
-            fwall = Kp*(WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT
+            fwall = Kp*(WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])
         else:
-  	    fwall = 0.0
+            fwall = 0.0
         fwvec = fwall*plam
         fvec = np.array([fwvec[1], fwvec[2], fwvec[0]]) 
         f = GM.Vector3(*fvec)
