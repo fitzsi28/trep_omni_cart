@@ -59,9 +59,9 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-Kpw = 300.0
+Kpw = 0.0#300.0
 Kp = 100.0
-Kd = 0.1
+Kd = 0.#1
 SCALE = 2
 WALL = SCALE*0.2
 MAXSTEP = 20 #m/s^2
@@ -122,10 +122,9 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.fb_flag = False # SAC feedback flag
+        self.fb_flag = True # SAC feedback flag
         self.sacpos = 0.
         self.prev = np.array([0.,0.,0.])
-        self.prevsac = 0.
         self.wall=0.
         
 
@@ -224,7 +223,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((SCALE*position[1], 0.0, SCALE*position[1]))
+        self.q0 = np.array((SCALE*position[1], 0.01, SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
@@ -321,32 +320,28 @@ class PendSimulator:
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-        
-        #compute the SAC control
-        #toc = time.time()
-        self.sacsys.calc_u()
-        #tic = time.time()
-        #print (tic-toc)
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-        
-        #convert kinematic acceleration to new position of SAC marker/change in position
-        self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
+
         # now we can render the forces and update the SAC Marker every other iteration:
-        if self.fb_flag == False:
-            if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 10**(-6):
-		self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-                self.i=self.i+1 
-            else:
-                self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-            self.n=self.n+1
-            self.fb_flag = True
+        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
+  	    self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
+            self.i=self.i+1 
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-            self.prevsac = self.sacpos  
+        self.n=self.n+1
+        
+        if self.fb_flag < 1:
+            self.fb_flag = self.fb_flag + 1
+        else:
+            #compute the SAC control
+            self.sacsys.calc_u()
+            self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        
+        #convert kinematic acceleration to new position of SAC marker/change in position
+            self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
             self.wall = self.prev[0]
-            self.fb_flag = False
+            self.fb_flag = 0
+        
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
-
         self.render_forces()
 	#self.score_marker.text = "Change in pos = "+ str(position[1]-self.prevpos)
         self.marker_pub.publish(self.markers)
@@ -376,7 +371,7 @@ class PendSimulator:
         else:
   	    fwall = 0.0
         #get force magnitude
-        if ((self.prev[0]-self.prev[1])*(self.prevsac-self.prev[1])) > 10**(-6):
+        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
             fsac = np.array([0.,0.+fwall,0.])
         else:
 	    fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT,0.])
