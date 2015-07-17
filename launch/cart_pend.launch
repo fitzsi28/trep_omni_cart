@@ -10,7 +10,7 @@
   <include file="$(find phantom_omni)/launch/omni_headless.launch" />
 
   <!-- startup simulator node -->
-  <node pkg="trep_omni_cart" type="cart_simulator.py" name="simulator"
+  <node pkg="trep_omni_cart" type="cart_pend_simulator.py" name="simulator"
 	respawn="true" output="screen" />
   
   <!-- rviz if needed -->
