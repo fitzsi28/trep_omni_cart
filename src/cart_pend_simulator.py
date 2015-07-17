@@ -117,7 +117,7 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.fb_flag = False # SAC feedback flag
+        self.fb_flag = 0 # SAC feedback flag
 
         # setup markers
         self.setup_markers()
@@ -294,12 +294,12 @@ class PendSimulator:
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
        
         # now we can render the forces and update the SAC Marker every other iteration:
-        if self.fb_flag == False:
+        if self.fb_flag < 1:
             self.render_forces()
             self.sac_marker.points = [GM.Point(*ptransc), GM.Point(*ptransu)]
-            self.fb_flag = True
+            self.fb_flag += 1
         else:
-            self.fb_flag = False
+            self.fb_flag = 0
 
         self.marker_pub.publish(self.markers)
   
