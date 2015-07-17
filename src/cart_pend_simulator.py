@@ -59,8 +59,13 @@ M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
+Kpw = 0.0#300.0
+Kp = 100.0
+Kd = 0.#1
+SCALE = 2
+WALL = SCALE*0.2
 MAXSTEP = 20 #m/s^2
-SACEFFORT=1
+SACEFFORT=0.03
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -96,7 +101,7 @@ def xdes_func(t, x, xdes):
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
     sacsys.T = 0.5
-    sacsys.lam = -20
+    sacsys.lam = -10.0
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
@@ -117,7 +122,12 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.fb_flag = False # SAC feedback flag
+        self.fb_flag = True # SAC feedback flag
+        self.sacpos = 0.
+        self.prev = np.array([0.,0.,0.])
+        self.wall=0.
+        
+
 
         # setup markers
         self.setup_markers()
@@ -142,7 +152,7 @@ class PendSimulator:
         self.mass_marker.action = VM.Marker.ADD
         self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
         self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
-        self.mass_marker.lifetime = rospy.Duration(5*DT)
+        self.mass_marker.lifetime = rospy.Duration(4*DT)
         self.mass_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.mass_marker.type = VM.Marker.SPHERE
         self.mass_marker.id = 0
@@ -152,27 +162,45 @@ class PendSimulator:
         self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
         self.link_marker.scale = GM.Vector3(*[0.005, 0.05, 0.05])
         self.link_marker.id = 1
-        #sac marker
-        self.sac_marker = copy.deepcopy(self.mass_marker)
-        self.sac_marker.type = VM.Marker.ARROW
-        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(10*DT)
-        self.sac_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
-        self.sac_marker.id = 2
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 3
-        
-        
+        #sac marker
+        self.sac_marker = copy.deepcopy(self.cart_marker)
+        self.sac_marker.type = VM.Marker.LINE_STRIP
+        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
+        self.sac_marker.lifetime = rospy.Duration(5*DT)
+        self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
+        p1 = np.array([0.0,0.0,0.1])
+        p2 = np.array([0.0,0.075,0.2])
+        p3 = np.array([0.0,-0.05,0.15])
+        self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
+        self.sac_marker.id = 2
+ 
+        # score marker
+        self.score_marker = copy.deepcopy(self.mass_marker)
+        self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
+        self.score_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
+        self.score_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+	self.score_marker.pose.position.x = 0;
+     	self.score_marker.pose.position.y = 0;
+  	self.score_marker.pose.position.z = 0.2;
+  	self.score_marker.pose.orientation.x = 0.0;
+  	self.score_marker.pose.orientation.y = 0.0;
+  	self.score_marker.pose.orientation.z = 0.0;
+  	self.score_marker.pose.orientation.w = 1.0;
+	self.score_marker.text = "0%"
+        self.score_marker.id = 4
 
         self.markers.markers.append(self.mass_marker)
-        self.markers.markers.append(self.sac_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
-        
+        self.markers.markers.append(self.sac_marker)
+        self.markers.markers.append(self.score_marker)
+
         return
     
         
@@ -195,14 +223,13 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((2*position[1], 0.0, 2*position[1]))
+        self.q0 = np.array((SCALE*position[1], 0.01, SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
         self.sacsys.init()
         return
 
-    
     def timercb(self, data):
         if not self.running_flag:
             return
@@ -219,26 +246,23 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
+        #update position array
+        self.prev = np.insert(self.prev,0, SCALE*position[1])
+        self.prev = np.delete(self.prev, -1)
+
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = 2*position[1]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = SCALE*position[1]#self.prev[0]
         
-        #compute the SAC control
-        #toc = time.time()
-        self.sacsys.calc_u()
-        #tic = time.time()
-        #print (tic-toc)
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-          #convert kinematic acceleration to new position of SAC marker/change in position amplified by 6
-        self.usac = self.system.q[0]+6*((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
-                   
+        
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT,k2=ucont)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-              
+
+                     
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -276,7 +300,7 @@ class PendSimulator:
         pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
 	gwu = copy.copy(gwc)
-        gwu.itemset((1,3), self.usac)
+        gwu.itemset((1,3), self.sacpos)
 	ptransu = gwu[0:3, -1]
         # print ptransc
         pu.point.x = ptransu[0]
@@ -292,19 +316,34 @@ class PendSimulator:
             m.header.stamp = p.header.stamp
         self.mass_marker.pose = GM.Pose(position=GM.Point(*ptrans))
         p1 = GM.Point(*ptrans)
+        #print ptrans
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-        #self.marker_pub.publish(self.markers)
-        #self.render_forces()
-        # now we can render the forces and update the SAC Marker every other iteration:
-        if self.fb_flag == False:
-            self.render_forces()
-            self.sac_marker.points = [GM.Point(*ptransc), GM.Point(*ptransu)]
-            self.fb_flag = True
-        else:
-            self.fb_flag = False
 
+        # now we can render the forces and update the SAC Marker every other iteration:
+        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
+  	    self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
+            self.i=self.i+1 
+        else:
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+        self.n=self.n+1
+        
+        if self.fb_flag < 1:
+            self.fb_flag = self.fb_flag + 1
+        else:
+            #compute the SAC control
+            self.sacsys.calc_u()
+            self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        
+        #convert kinematic acceleration to new position of SAC marker/change in position
+            self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
+            self.wall = self.prev[0]
+            self.fb_flag = 0
+        
+        self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
+        self.render_forces()
+	#self.score_marker.text = "Change in pos = "+ str(position[1]-self.prevpos)
         self.marker_pub.publish(self.markers)
   
         return
@@ -324,8 +363,18 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
-        # get force magnitude
-        fsac = np.array([0.,(SACEFFORT*self.sacsys.controls[0]*self.t_app),0.])
+        #Check safety condition
+        if SCALE*position[1] < -WALL:
+            fwall = Kpw*(-WALL-SCALE*position[1])#+Kd*(self.prev[1]-self.prev[0])/DT
+        elif SCALE*position[1]>WALL:
+            fwall = Kpw*(WALL-SCALE*position[1])#+Kd*(self.prev[1]-self.prev[0])/DT
+        else:
+  	    fwall = 0.0
+        #get force magnitude
+        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
+            fsac = np.array([0.,0.+fwall,0.])
+        else:
+	    fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])/DT,0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
@@ -342,6 +391,8 @@ class PendSimulator:
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == False:
             # then we previously pushed only the grey button, and we just released it
             rospy.loginfo("Starting integration")
+            self.i = 1.0
+            self.n = 1.0
             self.setup_integrator()
             self.running_flag = True
         elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == True:

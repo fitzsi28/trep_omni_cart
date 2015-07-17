@@ -3,6 +3,7 @@ import trep
 from trep import tx, ty, tz, rx, ry, rz
 import sactrep
 import matplotlib.pyplot as plt
+import time
 
 # set mass, length, and gravity:
 DT = 3./100.
@@ -19,7 +20,7 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, 0.0, 0]) # x = [x_cart, theta]
+q0 = np.array([0, np.pi-0.001, 0]) # x = [x_cart, theta]
 dq0 = np.array([0, 0, 0])
 
 # define time parameters:
@@ -91,7 +92,9 @@ Q = [system.q]
 
 while sacsys.time < tf:
     #sacsys.Q = np.diag([np.power(system.q[0]/0.5,8),200,np.power(system.q[2]/0.5,8),0,50,0])
+    tic = time.time()
     sacsys.step()
+    toc = time.time()
     t_app = sacsys.t_app[1]-sacsys.t_app[0]
     xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
     fsac = sacsys.controls[0]*M*-1 #SAC resistive force
@@ -103,7 +106,7 @@ while sacsys.time < tf:
     proj_func(qtemp)
     Q = np.vstack((Q,qtemp))
     if np.abs(sacsys.time%1)<DT:
-        print "time = ",sacsys.time
+        print "time = ",(toc-tic)
         
 plt.plot(T,Q[0:,:-1])
 plt.plot(T,u[0:,0])
