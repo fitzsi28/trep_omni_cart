@@ -55,6 +55,7 @@ import time
 ####################
 
 DT = 3./100.
+TS = 18./100.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
@@ -123,7 +124,6 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.fb_flag = 0 # SAC feedback flag
         self.sacpos = 0.
         self.sacvel = 0.
         self.prev = np.array([0.,0.,0.])
@@ -137,6 +137,7 @@ class PendSimulator:
         # setup publishers, subscribers, timers:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
+        self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped)
         self.sac_pub = rospy.Publisher("sac_point", PointStamped)
@@ -305,19 +306,6 @@ class PendSimulator:
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-                
-        if self.fb_flag < 2:
-            self.fb_flag += 1
-        else:
-            #compute the SAC control
-            self.sacsys.calc_u()
-            self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-        
-            #convert kinematic acceleration to new velocity&position
-            self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
-            self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
-            self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
-            self.fb_flag = 0
         
         self.render_forces()
         self.n += 1
@@ -327,6 +315,20 @@ class PendSimulator:
         return
         
 
+    def timersac(self, data):
+        if not self.running_flag:
+            return
+        #compute the SAC control
+        self.sacsys.calc_u()
+        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        
+        #convert kinematic acceleration to new velocity&position
+        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
+        self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
+        self.fb_flag = 0
+        return
+    
     def render_forces(self):
         # get the position of the stylus in the omni's base frame
         if self.listener.frameExists(BASEFRAME) and self.listener.frameExists(CONTFRAME):
