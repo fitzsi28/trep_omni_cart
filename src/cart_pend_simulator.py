@@ -124,6 +124,7 @@ class PendSimulator:
         self.grey_flag = False
         self.fb_flag = 0 # SAC feedback flag
         self.sacpos = 0.
+        self.sacvel = 0.
         self.prev = np.array([0.,0.,0.])
         self.wall=0.
         self.i = 0.
@@ -318,9 +319,9 @@ class PendSimulator:
             self.sacsys.calc_u()
             self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
-        #convert kinematic acceleration to new position of SAC marker/change in position
-            self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
-            self.wall = self.prev[0]
+            #convert kinematic acceleration to new velocity&position
+            self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
+            self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
             self.fb_flag = 0
         
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
@@ -353,10 +354,10 @@ class PendSimulator:
         else:
             fwall = 0.0
         #get force magnitude
-        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
-            fsac = np.array([0.,0.+fwall,0.])
-        else:
+        if SCALE*position[1]*np.sign(self.sacvel) < np.sign(self.sacvel)*self.wall:
             fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0]),0.])
+        else:
+            fsac = np.array([0.,0.+fwall,0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
