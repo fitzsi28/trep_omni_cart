@@ -44,7 +44,7 @@ import trep
 from trep import tx, ty, tz, rx, ry, rz
 import numpy as np
 import copy
-#import time
+import time
 
 
 ####################
@@ -98,6 +98,7 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent,
                                            self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
+      #  self.test_timer = rospy.Timer(rospy.Duration(10*DT),self.testtimer)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped)
         self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray)
@@ -158,8 +159,10 @@ class PendSimulator:
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         return
-
-    
+    """
+    def testtimer(self,data):
+        print "TEST ",time.time()
+    """
     def timercb(self, data):
         #tic = time.time()
         if not self.running_flag:
@@ -197,7 +200,6 @@ class PendSimulator:
         # get transform from trep world to mass frame:
         gwm = self.system.get_frame(MASSFRAME).g()
         ptrans = gwm[0:3, -1]
-        # print ptrans
         p.point.x = ptrans[0]
         p.point.y = ptrans[1]
         p.point.z = ptrans[2]
@@ -212,7 +214,6 @@ class PendSimulator:
         # get transform from trep world to cart frame:
         gwc = self.system.get_frame(CARTFRAME).g()
         ptransc = gwc[0:3, -1]
-        # print ptransc
         pc.point.x = ptransc[0]
         pc.point.y = ptransc[1]
         pc.point.z = ptransc[2]
@@ -262,7 +263,6 @@ class PendSimulator:
         #fvec = np.array([flam[1], flam[2], flam[0]])
         if SCALE*position[1] < -WALL:
             fwall = Kp*(-WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])
-            print fwall
         elif SCALE*position[1]>WALL:
             fwall = Kp*(WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])
         else:
