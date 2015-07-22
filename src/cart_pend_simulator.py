@@ -62,8 +62,9 @@ g = 9.81 #m/s^2
 SCALE = 8
 Kpw = 0.0#300.0
 Kp = 400.0/SCALE
-Kd = 10.0/SCALE
+Kd = 50.0/SCALE
 WALL = SCALE*0.2
+EPS = 0.#10**(-3)
 MAXSTEP = 20 #m/s^2
 SACEFFORT=0.03
 BASEFRAME = "base"
@@ -233,8 +234,9 @@ class PendSimulator:
         self.sacsys.calc_u()
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
-        #convert kinematic acceleration to new position of SAC marker/change in position
-        self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
+        #convert kinematic acceleration to new velocity&position
+        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app        
         self.wall = SCALE*position[1]
         return
 
@@ -259,7 +261,7 @@ class PendSimulator:
         self.prev = np.delete(self.prev, -1)
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = SCALE*position[1]#self.prev[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = self.prev[0]
         
         # step integrator:
         try:
@@ -303,16 +305,8 @@ class PendSimulator:
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-        
-        # now we can render the forces and update the SAC Marker every other iteration:
-        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
-            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-            self.i += 1 
-        else:
-            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        self.n += 1
-        #print self.sacpos, "actual position", self.prev[0]
-        if self.fb_flag < 1:
+                
+        if self.fb_flag < 2:
             self.fb_flag += 1
         else:
             #compute the SAC control
@@ -322,13 +316,14 @@ class PendSimulator:
             #convert kinematic acceleration to new velocity&position
             self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
             self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
+            self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
             self.fb_flag = 0
         
-        self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         self.render_forces()
+        self.n += 1
+        self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         #self.score_marker.text = "pos = "+ str(position[1])
         self.marker_pub.publish(self.markers)
-  
         return
         
 
@@ -354,10 +349,18 @@ class PendSimulator:
         else:
             fwall = 0.0
         #get force magnitude
-        if SCALE*position[1]*np.sign(self.sacvel) < np.sign(self.sacvel)*self.wall:
-            fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0]),0.])
+        if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
+           (self.sacvel < 0 and SCALE*position[1] > self.wall):
+            fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1]) \
+                             +Kd*(self.prev[1]-self.prev[0]),0.])
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+        elif abs(SCALE*position[1] - self.wall) < 10**(-4):
+            fsac = np.array([0.,0.+fwall,0.])
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0]) 
         else:
             fsac = np.array([0.,0.+fwall,0.])
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
+            self.i += 1 
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
@@ -368,15 +371,18 @@ class PendSimulator:
         return
         
     def buttoncb(self, data):
-        if data.grey_button == 1 and data.white_button == 0 and self.running_flag == False:
+        if data.grey_button == 1 and data.white_button == 0 and \
+        self.running_flag == False:
             rospy.loginfo("Integration primed")
             self.grey_flag = True
-        elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == False:
+        elif data.grey_button == 0 and data.white_button == 0 and \
+        self.grey_flag == True and self.running_flag == False:
             # then we previously pushed only the grey button, and we just released it
             rospy.loginfo("Starting integration")
             self.setup_integrator()
             self.running_flag = True
-        elif data.grey_button == 0 and data.white_button == 0 and self.grey_flag == True and self.running_flag == True:
+        elif data.grey_button == 0 and data.white_button == 0 and \
+        self.grey_flag == True and self.running_flag == True:
             # then the sim is already running and nothing should happend
             rospy.loginfo("Integration already running")
         elif data.white_button == 1:
