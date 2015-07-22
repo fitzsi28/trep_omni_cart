@@ -54,8 +54,7 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 
-DT = 3./100. #200HZ max
-TS = 6./100.
+DT = 3./100.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
@@ -124,7 +123,6 @@ class PendSimulator:
         self.running_flag = False
         self.grey_flag = False
         self.fb_flag = 0 # SAC feedback flag
-        self.sacvel = 0.
         self.sacpos = 0.
         self.prev = np.array([0.,0.,0.])
         self.wall=0.
@@ -137,7 +135,6 @@ class PendSimulator:
         # setup publishers, subscribers, timers:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
-        self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped)
         self.sac_pub = rospy.Publisher("sac_point", PointStamped)
@@ -239,8 +236,7 @@ class PendSimulator:
         self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
         self.wall = SCALE*position[1]
         return
-    
-          
+
     def timercb(self, data):
         if not self.running_flag:
             return
@@ -307,35 +303,34 @@ class PendSimulator:
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         
-        # check that the stylus moved in the right direction:
+        # now we can render the forces and update the SAC Marker every other iteration:
         if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         self.n += 1
-                   
+        #print self.sacpos, "actual position", self.prev[0]
+        if self.fb_flag < 1:
+            self.fb_flag += 1
+        else:
+            #compute the SAC control
+            self.sacsys.calc_u()
+            self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        
+        #convert kinematic acceleration to new position of SAC marker/change in position
+            self.sacpos = self.system.q[0]+((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
+            self.wall = self.prev[0]
+            self.fb_flag = 0
+        
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         self.render_forces()
         #self.score_marker.text = "pos = "+ str(position[1])
         self.marker_pub.publish(self.markers)
+  
         return
         
-    def timersac(self, data):
-        if not self.running_flag:
-            return
-        
-        #compute the SAC control
-        self.sacsys.calc_u()
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-        
-        #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
-        self.wall = self.prev[0]
-        
-        return
-        
+
     def render_forces(self):
         # get the position of the stylus in the omni's base frame
         if self.listener.frameExists(BASEFRAME) and self.listener.frameExists(CONTFRAME):
@@ -358,10 +353,10 @@ class PendSimulator:
         else:
             fwall = 0.0
         #get force magnitude
-        if SCALE*position[1]*np.sign(self.sacvel) < np.sign(self.sacvel)*self.wall:
-            fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0]),0.])
-        else:
+        if ((self.prev[0]-self.prev[1])*(self.sacpos-self.prev[1])) > 10**(-6):
             fsac = np.array([0.,0.+fwall,0.])
+        else:
+            fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0]),0.])
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
