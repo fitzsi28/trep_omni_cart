@@ -54,7 +54,7 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 
-DT = 3./100.
+DT = 1./100.
 TS = 18./100.
 M = 0.1 #kg
 L = 1 # m
@@ -138,11 +138,10 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.mass_pub = rospy.Publisher("mass_point", PointStamped)
-        self.cart_pub = rospy.Publisher("cart_point", PointStamped)
-        self.sac_pub = rospy.Publisher("sac_point", PointStamped)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback)
+        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 10)
+        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 10)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 10)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 10)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -209,9 +208,10 @@ class PendSimulator:
         
     def setup_integrator(self):
         self.system = build_system()
-        self.sacsys = build_sac_control(self.system)
+        self.sactrep = build_system()
+        self.sacsys = build_sac_control(self.sactrep)
         self.mvi = trep.MidpointVI(self.system)
-                    
+                            
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
             t = self.listener.getLatestCommonTime(SIMFRAME, CONTFRAME)
@@ -229,7 +229,8 @@ class PendSimulator:
         self.q0 = np.array((SCALE*position[1], 0.01, SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
-        self.system.q = self.mvi.q1
+        self.sactrep.q = self.system.q
+        self.sactrep.dq = self.system.dq
         self.sacsys.init()
         #compute the SAC control
         self.sacsys.calc_u()
@@ -315,10 +316,12 @@ class PendSimulator:
         return
         
 
-    def timersac(self, data):
+    def timersac(self,data):
         if not self.running_flag:
             return
         #compute the SAC control
+        self.sactrep.q = self.system.q
+        self.sactrep.dq = self.system.dq
         self.sacsys.calc_u()
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
@@ -326,7 +329,7 @@ class PendSimulator:
         self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
         self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
-        self.fb_flag = 0
+        #self.fb_flag = 0
         return
     
     def render_forces(self):
