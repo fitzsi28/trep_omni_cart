@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 
 # set mass, length, and gravity:
-DT = 1./100.
+DT = 1./60.
 M = 0.2 #kg
 L = 1.0 # m
 B = 0.01 # damping
@@ -20,19 +20,18 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
-dq0 = np.array([0, 0, 0])
+q0 = np.array([0., 0.]) # x = [theta, x_cart]
+dq0 = np.array([0., 0.])
 
 # define time parameters:
 #dt = 0.0167
-tf = 30.0
+tf = 10.0
 
 # create system
 system = trep.System()
 # define frames
 frames = [
-    ty('ys', name='y-stylus', kinematic=True),
-    ty('yc',name=CARTFRAME, mass=0.001), [
+    ty('ys', name='y-stylus', kinematic=True), [
         rx('theta', name="pendShoulder"), [
             tz(-L, name=MASSFRAME, mass=M)]]]
 # add frames to system
@@ -43,7 +42,7 @@ trep.potentials.Gravity(system, (0,0,-g))
 trep.forces.Damping(system, B)
 
 #add a constraint
-trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
+#trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
 
 
 #############
@@ -51,26 +50,25 @@ trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
 #############
 
 def proj_func(x):
-    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
-    if(x[1] < 0):
-        x[1] = x[1]+2.0*np.pi
-    x[1] = x[1] - np.pi
+    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
+    if(x[0] < 0):
+        x[0] = x[0]+2.0*np.pi
+    x[0] = x[0] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = 0.0
-    xdes[1] = np.pi
+    xdes[0] = np.pi
 
 sacsys = sactrep.Sac(system)
 
 sacsys.T = 1.2
-sacsys.lam = -5.
+sacsys.lam = -5
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
-sacsys.calc_tm = 0.#DT
+sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([150,200,150,50,0,50]) # yc,th,ys,ycd,thd,ysd
-sacsys.P = 0*np.diag([0,0,0,0,0,0])
+sacsys.Q = np.diag([200,50,0,5]) # th,ys,thd,ysd
+sacsys.P = 0*np.diag([0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
 sacsys.set_proj_func(proj_func)
@@ -84,8 +82,8 @@ system.dq = dq0
 sacsys.init()
 
 # run loop:
-q = np.array((system.q[0], system.dq[0],
-               system.q[1], system.dq[1]))
+q = np.array((system.q[0], system.q[1],
+               system.dq[0], system.dq[1]))
 u = np.array([sacsys.controls, sacsys.t_app[1]-sacsys.t_app[0]])
 T = [sacsys.time]
 Q = [system.q]
@@ -97,9 +95,8 @@ while sacsys.time < tf:
     toc = time.time()
     t_app = sacsys.t_app[1]-sacsys.t_app[0]
     xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
-    fsac = sacsys.controls[0]*M*-1 #SAC resistive force
-    q = np.vstack((q, np.hstack((system.q[0], system.q[1],
-                                 system.lambda_(), fsac))))
+    q = np.vstack((q, np.hstack((system.q[0], system.dq[1],
+                                 t_app, sacsys.controls[0]))))
     u = np.vstack((u, np.hstack([sacsys.controls, t_app])))
     T.append(sacsys.time)
     qtemp = sacsys.q
@@ -108,8 +105,9 @@ while sacsys.time < tf:
     if np.abs(sacsys.time%1)<DT:
         print "time = ",(toc-tic)
         
-plt.plot(T,Q[0:,:-1])
-plt.plot(T,u[0:,0])
+plt.plot(T,Q)
+plt.plot(T,u[0:])
+plt.legend(["Theta","y","U"])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
