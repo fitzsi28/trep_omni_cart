@@ -60,7 +60,7 @@ L = 1 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 8
-Kpw = 0.0#300.0
+Kpw = 400./SCALE
 Kp = 400.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
@@ -130,7 +130,6 @@ class PendSimulator:
         self.wall=0.
         self.i = 0.
         self.n = 0.
-      
         # setup markers
         self.setup_markers()
         
@@ -181,7 +180,6 @@ class PendSimulator:
         p3 = np.array([0.0,-0.05,0.15])
         self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
         self.sac_marker.id = 2
- 
         # score marker
         self.score_marker = copy.deepcopy(self.mass_marker)
         self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
@@ -238,6 +236,9 @@ class PendSimulator:
         self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app        
         self.wall = SCALE*position[1]
+        
+        self.i = 0.
+        self.n = 0.
         return
 
     def timercb(self, data):
@@ -343,9 +344,9 @@ class PendSimulator:
             return
         #Check safety condition
         if SCALE*position[1] < -WALL:
-            fwall = Kpw*(-WALL-SCALE*position[1])#+Kd*(self.prev[1]-self.prev[0])/DT
+            fwall = Kpw*(-WALL-SCALE*position[1])
         elif SCALE*position[1]>WALL:
-            fwall = Kpw*(WALL-SCALE*position[1])#+Kd*(self.prev[1]-self.prev[0])/DT
+            fwall = Kpw*(WALL-SCALE*position[1])
         else:
             fwall = 0.0
         #get force magnitude
