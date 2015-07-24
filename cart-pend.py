@@ -65,9 +65,9 @@ sacsys.lam = -5
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
-sacsys.calc_tm = DT
+sacsys.calc_tm = 0#DT
 sacsys.u2search = False
-sacsys.Q = np.diag([200,50,0,5]) # th,ys,thd,ysd
+sacsys.Q = np.diag([200,50,0,0]) # th,ys,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
