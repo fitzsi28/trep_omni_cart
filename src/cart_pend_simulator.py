@@ -56,9 +56,10 @@ L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
 SCALE = 8
-Kp = 400.0/SCALE
-Kd = 10.0/SCALE
+Kp = 100./SCALE
+Kd = 50./SCALE
 WALL = SCALE*0.1
+EPS = 2*10**(-1)
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -89,6 +90,7 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
+        #self.wflag1 = False
         self.prev = np.array([0.,0.])
 
         # setup markers
@@ -98,11 +100,10 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent,
                                            self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
-      #  self.test_timer = rospy.Timer(rospy.Duration(10*DT),self.testtimer)
-        self.mass_pub = rospy.Publisher("mass_point", PointStamped)
-        self.cart_pub = rospy.Publisher("cart_point", PointStamped)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback)
+        self.mass_pub = rospy.Publisher("mass_point", PointStamped,queue_size = 2)
+        self.cart_pub = rospy.Publisher("cart_point", PointStamped,queue_size = 2)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray,queue_size = 2)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback,queue_size = 2)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -131,7 +132,6 @@ class PendSimulator:
         self.cart_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         self.cart_marker.id = 2
-      
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
@@ -159,10 +159,7 @@ class PendSimulator:
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         return
-    """
-    def testtimer(self,data):
-        print "TEST ",time.time()
-    """
+    
     def timercb(self, data):
         #tic = time.time()
         if not self.running_flag:
@@ -179,15 +176,21 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-      
+        
         #update position array
         self.prev = np.insert(self.prev,0, SCALE*position[1])
         self.prev = np.delete(self.prev, -1)
-       # now we can use this position to integrate the trep simulation:
+        """
+        if self.prev[0] < -WALL-EPS:
+            self.wflag1 = True
+        elif self.prev[0] > -WALL:
+            self.wflag1 = False
+        """
+        # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(NU)
         ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = self.prev[0]#SCALE*position[1]
-        
-       # step integrator:
+        #print SCALE*position[1]
+        # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT, k2=ucont) 
         except trep.ConvergenceError as e:
@@ -221,7 +224,7 @@ class PendSimulator:
         # now we can send the transform:
         qtransc = TR.quaternion_from_matrix(gwc)
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
-       
+        
         # now we can publish the markers:
         for m in self.markers.markers:
             m.header.stamp = p.header.stamp
@@ -262,6 +265,7 @@ class PendSimulator:
         # with /trep_world or /base:
         #fvec = np.array([flam[1], flam[2], flam[0]])
         if SCALE*position[1] < -WALL:
+        #if self.wflag1 == True:
             fwall = Kp*(-WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])
         elif SCALE*position[1]>WALL:
             fwall = Kp*(WALL-SCALE*position[1])+Kd*(self.prev[1]-self.prev[0])
