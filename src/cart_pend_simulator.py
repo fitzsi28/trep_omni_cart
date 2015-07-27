@@ -54,15 +54,15 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 
-DT = 1./100.
-TS = 18./100.
+DT = 1./30.
+TS = 1./5.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 8
-Kpw = 400./SCALE
-Kp = 400.0/SCALE
+Kpw = 0./SCALE
+Kp = 100.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
