@@ -55,7 +55,7 @@ import time
 ####################
 
 DT = 1./30.
-TS = 1./5.
+TS = 1./15.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
@@ -67,7 +67,7 @@ Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
 MAXSTEP = 20 #m/s^2
-SACEFFORT=0.03
+SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -124,12 +124,14 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
+        self.zflag = False
         self.sacpos = 0.
         self.sacvel = 0.
         self.prev = np.array([0.,0.,0.])
         self.wall=0.
         self.i = 0.
         self.n = 0.
+        
         # setup markers
         self.setup_markers()
         
@@ -137,10 +139,11 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 10)
-        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 10)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 10)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 10)
+        self.force_timer = rospy.Timer(rospy.Duration(DT),self.render_forces)
+        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
+        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 1)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 1)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -224,7 +227,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((SCALE*position[1], 0.01, SCALE*position[1]))
+        self.q0 = np.array((SCALE*position[1], np.pi-0.01, SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -309,7 +312,7 @@ class PendSimulator:
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         
-        self.render_forces()
+        #self.render_forces()
         self.n += 1
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         self.marker_pub.publish(self.markers)
@@ -333,7 +336,9 @@ class PendSimulator:
         self.sacvel = veltemp
         return
     
-    def render_forces(self):
+    def render_forces(self,data):
+        if not self.running_flag:
+            return
         # get the position of the stylus in the omni's base frame
         if self.listener.frameExists(BASEFRAME) and self.listener.frameExists(CONTFRAME):
             t = self.listener.getLatestCommonTime(BASEFRAME, CONTFRAME)
@@ -355,14 +360,23 @@ class PendSimulator:
         else:
             fwall = 0.0
         #get force magnitude
-        if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
+        fsac = np.array([0.,0.,0.])
+        if self.zflag == True:
+            #fsac = np.array([0.,fwall+100*(self.sacpos-SCALE*position[1]),0.])
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+            self.zflag = False
+        elif (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
             fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
+            #fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
-            fsac = np.array([0.,0.+fwall,0.])
+        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-3):
+            fsac = np.array([0.,fwall+50*(self.sacpos-SCALE*position[1]),0.])
+            #fsac = np.array([0.,(SACEFFORT*self.sacsys.controls[0]*self.t_app),0.])
+            #fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+            self.zflag = True
         else:
             fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
@@ -375,7 +389,7 @@ class PendSimulator:
         p = GM.Vector3(*position)
         self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
-        
+           
     def buttoncb(self, data):
         if data.grey_button == 1 and data.white_button == 0 and \
         self.running_flag == False:
