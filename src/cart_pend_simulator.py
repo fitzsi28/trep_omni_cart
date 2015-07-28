@@ -62,7 +62,7 @@ B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 8
 Kpw = 0./SCALE
-Kp = 100.0/SCALE
+Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
@@ -326,9 +326,11 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
+        veltemp = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
-        self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
+        if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
+            self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
+        self.sacvel = veltemp
         return
     
     def render_forces(self):
@@ -358,9 +360,9 @@ class PendSimulator:
             fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.wall) < 10**(-4):
+        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
             fsac = np.array([0.,0.+fwall,0.])
-            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0]) 
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
         else:
             fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
