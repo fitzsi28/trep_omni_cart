@@ -55,18 +55,18 @@ import time
 ####################
 
 DT = 1./30.
-TS = 1./15.
+TS = 1./10.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 8
 Kpw = 0./SCALE
-Kp = 200.0/SCALE
+Kp = 100.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
-MAXSTEP = 20 #m/s^2
+MAXSTEP = 350. #m/s^2
 SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -103,13 +103,13 @@ def xdes_func(t, x, xdes):
 def build_sac_control(system):
     sacsys=sactrep.Sac(system)
     sacsys.T = 0.5
-    sacsys.lam = -10.0
+    sacsys.lam = -20.0
     sacsys.maxdt = 0.2
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
     sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,100,1,50,1]) # yc,th,ys,ycd,thd,ysd
+    sacsys.Q = np.diag([100,200,100,1,40,1]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
@@ -139,7 +139,7 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.force_timer = rospy.Timer(rospy.Duration(DT),self.render_forces)
+        self.force_timer = rospy.Timer(rospy.Duration(DT/2),self.render_forces)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
         self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 1)
@@ -176,7 +176,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(5*DT)
+        self.sac_marker.lifetime = rospy.Duration(2*DT)
         self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.075,0.2])
@@ -227,7 +227,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((SCALE*position[1], np.pi-0.01, SCALE*position[1]))
+        self.q0 = np.array((SCALE*position[1], 0., SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -313,8 +313,7 @@ class PendSimulator:
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         
         #self.render_forces()
-        self.n += 1
-        self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
+        #self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         self.marker_pub.publish(self.markers)
         return
         
@@ -360,33 +359,32 @@ class PendSimulator:
         else:
             fwall = 0.0
         #get force magnitude
-        fsac = np.array([0.,0.,0.])
-        if self.zflag == True:
-            #fsac = np.array([0.,fwall+100*(self.sacpos-SCALE*position[1]),0.])
-            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-            self.zflag = False
-        elif (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
+        #fsac = np.array([0.,0.,0.])
+        if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
             fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
             #fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-3):
-            fsac = np.array([0.,fwall+50*(self.sacpos-SCALE*position[1]),0.])
+        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
+            #fsac = np.array([0.,fwall+100*(self.sacpos-SCALE*position[1]),0.])
             #fsac = np.array([0.,(SACEFFORT*self.sacsys.controls[0]*self.t_app),0.])
-            #fsac = np.array([0.,0.+fwall,0.])
+            fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-            self.zflag = True
+            #self.zflag = True
         else:
             fsac = np.array([0.,0.+fwall,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
+        self.n += 1
+        self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
+        #print "accel", (((self.prev[2]-self.prev[1])/DT)-((self.prev[1]-self.prev[0])/DT))/DT
         self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            

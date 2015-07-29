@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import time
 
 # set mass, length, and gravity:
-DT = 1./100.
-M = 0.2 #kg
+DT = 1./30.
+M = 0.1 #kg
 L = 1.0 # m
-B = 0.01 # damping
+B = 0.1 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 35.0 #m/s^2
+MAXSTEP = 350.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -20,11 +20,10 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0, 0, 0]) # x = [x_cart, theta]
+q0 = np.array([0,0.01, 0]) # x = [x_cart, theta]
 dq0 = np.array([0, 0, 0])
 
 # define time parameters:
-#dt = 0.0167
 tf = 30.0
 
 # create system
@@ -32,7 +31,7 @@ system = trep.System()
 # define frames
 frames = [
     ty('ys', name='y-stylus', kinematic=True),
-    ty('yc',name=CARTFRAME, mass=0.001), [
+    ty('yc',name=CARTFRAME, mass=M), [
         rx('theta', name="pendShoulder"), [
             tz(-L, name=MASSFRAME, mass=M)]]]
 # add frames to system
@@ -57,19 +56,18 @@ def proj_func(x):
     x[1] = x[1] - np.pi
 
 def xdes_func(t, x, xdes):
-    xdes[0] = 0.0
     xdes[1] = np.pi
 
 sacsys = sactrep.Sac(system)
 
-sacsys.T = 1.2
-sacsys.lam = -5.
+sacsys.T = 0.5
+sacsys.lam = -20.0
 sacsys.maxdt = 0.2
 sacsys.ts = DT
 sacsys.usat = [[MAXSTEP, -MAXSTEP]]
-sacsys.calc_tm = 0.#DT
+sacsys.calc_tm = DT
 sacsys.u2search = False
-sacsys.Q = np.diag([150,200,150,50,0,50]) # yc,th,ys,ycd,thd,ysd
+sacsys.Q = np.diag([100,200,100,1,40,1]) # yc,th,ys,ycd,thd,ysd
 sacsys.P = 0*np.diag([0,0,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
@@ -106,10 +104,12 @@ while sacsys.time < tf:
     proj_func(qtemp)
     Q = np.vstack((Q,qtemp))
     if np.abs(sacsys.time%1)<DT:
-        print "time = ",(toc-tic)
+        print "time = ",sacsys.time
         
+
 plt.plot(T,Q[0:,:-1])
 plt.plot(T,u[0:,0])
+plt.axis([0,tf,-8,8])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
