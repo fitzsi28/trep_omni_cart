@@ -55,18 +55,17 @@ import time
 ####################
 
 DT = 1./30.
-TS = 1./10.
+TS = 1./2.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 8
-Kpw = 0./SCALE
-Kp = 100.0/SCALE
+Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
-MAXSTEP = 350. #m/s^2
+MAXSTEP = 295. #m/s^2
 SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -108,7 +107,7 @@ def build_sac_control(system):
     sacsys.ts = DT
     sacsys.usat = [[MAXSTEP, -MAXSTEP]]
     sacsys.calc_tm = DT
-    sacsys.u2search = False
+    sacsys.u2search = True#False
     sacsys.Q = np.diag([100,200,100,1,40,1]) # yc,th,ys,ycd,thd,ysd
     sacsys.P = 0*np.diag([0,0,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
@@ -139,7 +138,7 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.force_timer = rospy.Timer(rospy.Duration(DT/2),self.render_forces)
+        self.force_timer = rospy.Timer(rospy.Duration(DT),self.render_forces)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
         self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 1)
@@ -351,29 +350,22 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
-        #Check safety condition
-        if SCALE*position[1] < -WALL:
-            fwall = Kpw*(-WALL-SCALE*position[1])
-        elif SCALE*position[1]>WALL:
-            fwall = Kpw*(WALL-SCALE*position[1])
-        else:
-            fwall = 0.0
         #get force magnitude
         #fsac = np.array([0.,0.,0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
-            fsac = np.array([0.,fwall+Kp*(self.wall-SCALE*position[1]) \
+            fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
-            #fsac = np.array([0.,0.+fwall,0.])
+            #fsac = np.array([0.,0.,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
-            #fsac = np.array([0.,fwall+100*(self.sacpos-SCALE*position[1]),0.])
+            #fsac = np.array([0.,100*(self.sacpos-SCALE*position[1]),0.])
             #fsac = np.array([0.,(SACEFFORT*self.sacsys.controls[0]*self.t_app),0.])
-            fsac = np.array([0.,0.+fwall,0.])
+            fsac = np.array([0.,0.,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
             #self.zflag = True
         else:
-            fsac = np.array([0.,0.+fwall,0.])
+            fsac = np.array([0.,0.,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
         self.n += 1

@@ -11,7 +11,7 @@ M = 0.1 #kg
 L = 1.0 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 350.0 #m/s^2
+MAXSTEP = 295.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -20,11 +20,11 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0,0.01, 0]) # x = [x_cart, theta]
-dq0 = np.array([0, 0, 0])
+q0 = np.array([0.,0., 0.]) # x = [x_cart, theta]
+dq0 = np.array([0., 0., 0.])
 
 # define time parameters:
-tf = 30.0
+tf = 15.0
 
 # create system
 system = trep.System()
@@ -68,7 +68,7 @@ sacsys.usat = [[MAXSTEP, -MAXSTEP]]
 sacsys.calc_tm = DT
 sacsys.u2search = False
 sacsys.Q = np.diag([100,200,100,1,40,1]) # yc,th,ys,ycd,thd,ysd
-sacsys.P = 0*np.diag([0,0,0,0,0,0])
+sacsys.P = np.diag([0,10,0,0,0,0])
 sacsys.R = 0.3*np.identity(1)
 
 sacsys.set_proj_func(proj_func)
