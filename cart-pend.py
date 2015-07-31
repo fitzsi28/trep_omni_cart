@@ -116,4 +116,3 @@ np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
 
 # Visualize the system in action
 trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])
-

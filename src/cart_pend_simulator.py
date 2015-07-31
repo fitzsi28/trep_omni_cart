@@ -109,7 +109,7 @@ def build_sac_control(system):
     sacsys.calc_tm = DT
     sacsys.u2search = True#False
     sacsys.Q = np.diag([100,200,100,1,40,1]) # yc,th,ys,ycd,thd,ysd
-    sacsys.P = 0*np.diag([0,0,0,0,0,0])
+    sacsys.P = 0*np.diag([0,10,0,0,0,0])
     sacsys.R = 0.3*np.identity(NU)
     sacsys.set_proj_func(proj_func)
     sacsys.set_xdes_func(xdes_func)
