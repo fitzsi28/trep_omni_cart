@@ -7,6 +7,9 @@ import trep
 import trep.discopt
 from trep import tx, ty, tz, rx, ry, rz
 import pylab
+import sactrep
+import matplotlib.pyplot as plt
+import time
 
 # Build a pendulum system
 DT = 1./30. # Sampling time
@@ -21,11 +24,7 @@ CARTFRAME = "cart"
 
 q0 = 150.*np.pi/180. # Initial configuration of pendulum
 t0 = 0.0 # Initial time
-tf = 5.0# Final time
-
-qBar = np.array([0., np.pi, 0.]) # Desired configuration
-Q = np.diag([1,1,1,1,1,1]) # Cost weights for states
-R = 0.1*np.eye(1) # Cost weights for inputs
+tf = 15.# Final time
 
 system = trep.System() # Initialize system
 
@@ -46,6 +45,9 @@ trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)#add a 
 mvi = trep.MidpointVI(system)
 mvi.initialize_from_configs(t0, np.array([q0]), t0+DT, np.array([q0]))
 
+qBar = np.array([0., -np.pi, 0.]) # Desired configuration
+Q = np.diag([0.5,1,0.5,0.5,1,0.5]) # Cost weights for states
+R = 0.1*np.eye(1) # Cost weights for inputs
 # Create discrete system
 TVec = np.arange(t0, tf+DT, DT) # Initialize discrete time vector
 dsys = trep.discopt.DSystem(mvi, TVec) # Initialize discrete system
@@ -57,8 +59,8 @@ thetaIndex = dsys.system.get_config('theta').index # Find index of theta config 
 ycIndex = dsys.system.get_config('yc').index
 ysIndex = dsys.system.get_config('ys').index
 for i,t in enumerate(TVec):
-    Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
-    Qd[i, ycIndex] = qBar[1]
+    Qd[i, thetaIndex] = qBar[1] # Set desired configuration trajectory
+    Qd[i, ycIndex] = qBar[0]
     Qd[i, ysIndex] = qBar[2]
     (Xd, Ud) = dsys.build_trajectory(Qd) # Set desired state and input trajectory
 
@@ -75,6 +77,7 @@ T = [mvi.t1] # List to hold time values
 Q = [mvi.q1] # List to hold configuration values
 X = [dsys.xk] # List to hold state values
 U = [] # List to hold input values
+
 
 while mvi.t1 < tf-DT:
     x = dsys.xk # Grab current state
@@ -96,10 +99,12 @@ ax1 = pylab.subplot(211)
 pylab.plot(T, X)
 pylab.title("Linear Feedback Controller")
 pylab.ylabel("X")
-pylab.legend(["theta","x","dtheta","dx"])
+pylab.legend(["x","theta","x","dx","dtheta","dx"])
 pylab.subplot(212, sharex=ax1)
 pylab.plot(T[1:], U)
 pylab.xlabel("T")
 pylab.ylabel("U")
 pylab.legend(["u"])
 pylab.show()
+
+
