@@ -54,8 +54,8 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 
-DT = 1./30.
-TS = 1./2.
+DT = 1./60.
+TS = 1./5.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
@@ -79,11 +79,11 @@ NU = 1 #number of inputs in the system
 def build_system():
     sys = trep.System()
     frames = [
-        tx('xc',name=CARTFRAME, kinematic=True), [
-            rz('theta', name="pendShoulder"), [
-                ty(L, name=MASSFRAME, mass=M)]]]
+        ty('yc',name=CARTFRAME, kinematic=True), [ 
+            rx('theta', name="pendulumShoulder"), [
+                tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,-g,0))
+    trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
     return sys
 
@@ -102,7 +102,7 @@ def build_sac_control(sys):
     sacsyst.ts = DT
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
-    sacsyst.u2search = False
+    sacsyst.u2search = True#False
     sacsyst.Q = np.diag([200,10,0,0]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
@@ -169,7 +169,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(2*DT)
+        self.sac_marker.lifetime = rospy.Duration(3*DT)
         self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.075,0.2])
@@ -220,7 +220,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([3./4.*np.pi, SCALE*position[1]])#X=[th,xc]
+        self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -260,7 +260,7 @@ class PendSimulator:
         self.prev = np.delete(self.prev, -1)
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('xc'))] = self.prev[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prev[0]
         
         # step integrator:
         try:

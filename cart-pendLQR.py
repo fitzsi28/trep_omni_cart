@@ -7,9 +7,6 @@ import trep
 import trep.discopt
 from trep import tx, ty, tz, rx, ry, rz
 import pylab
-import sactrep
-import matplotlib.pyplot as plt
-import time
 
 # Build a pendulum system
 DT = 1./30. # Sampling time
@@ -24,28 +21,30 @@ CARTFRAME = "cart"
 
 q0 = 30.*np.pi/180. # Initial configuration of pendulum
 t0 = 0.0 # Initial time
-tf = 15.# Final time
+tf = 15.0# Final time
+
+qBar = np.array([0., 0.0]) # Desired configuration
+Q = np.diag([1,1,1,1]) # Cost weights for states
+R = 0.1*np.eye(1) # Cost weights for inputs
 
 def build_system():
     sys = trep.System()
     frames = [
-        tx('xc',name=CARTFRAME, kinematic=True), [
-            rz('theta', name="pendShoulder"), [
-                ty(L, name=MASSFRAME, mass=M)]]]
+        ty('yc',name=CARTFRAME, kinematic=True), [ 
+            rx('theta', name="pendulumShoulder"), [
+                tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,-g,0))
+    trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
     return sys
 
 system = build_system()
 
-
 # Create and initialize the variational integrator
 mvi = trep.MidpointVI(system)
 mvi.initialize_from_configs(t0, np.array([q0]), t0+DT, np.array([q0]))
-qBar = np.array([0.,0.]) # Desired configuration
-Q = np.diag([1,0,1,1]) # Cost weights for states
-R = 0.1*np.eye(1) # Cost weights for inputs
+
+# Create discrete system
 TVec = np.arange(t0, tf+DT, DT) # Initialize discrete time vector
 dsys = trep.discopt.DSystem(mvi, TVec) # Initialize discrete system
 xBar = dsys.build_state(Q=qBar,p = np.zeros(system.nQd)) # Create desired state configuration
@@ -53,11 +52,12 @@ xBar = dsys.build_state(Q=qBar,p = np.zeros(system.nQd)) # Create desired state 
 # Design linear feedback controller
 Qd = np.zeros((len(TVec), dsys.system.nQ)) # Initialize desired configuration trajectory
 thetaIndex = dsys.system.get_config('theta').index # Find index of theta config variable
-xcIndex = dsys.system.get_config('xc').index
-
+ycIndex = dsys.system.get_config('yc').index
+#ysIndex = dsys.system.get_config('ys').index
 for i,t in enumerate(TVec):
     Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
-    Qd[i, xcIndex] = qBar[1]
+    Qd[i, ycIndex] = qBar[1]
+    #Qd[i, ysIndex] = qBar[2]
     (Xd, Ud) = dsys.build_trajectory(Qd) # Set desired state and input trajectory
 
 Qk = lambda k: Q # Create lambda function for state cost weights
@@ -73,7 +73,6 @@ T = [mvi.t1] # List to hold time values
 Q = [mvi.q1] # List to hold configuration values
 X = [dsys.xk] # List to hold state values
 U = [] # List to hold input values
-
 
 while mvi.t1 < tf-DT:
     x = dsys.xk # Grab current state
@@ -102,5 +101,3 @@ pylab.xlabel("T")
 pylab.ylabel("U")
 pylab.legend(["u"])
 pylab.show()
-
-

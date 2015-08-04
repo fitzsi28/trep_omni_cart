@@ -32,11 +32,11 @@ tf = 15.0
 def build_system():
     sys = trep.System()
     frames = [
-        tx('xc',name=CARTFRAME, kinematic=True), [
-            rz('theta', name="pendShoulder"), [
-                ty(L, name=MASSFRAME, mass=M)]]]
+        ty('yc',name=CARTFRAME, kinematic=True), [ 
+            rx('theta', name="pendulumShoulder"), [
+                tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,-g,0))
+    trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
     return sys
 
@@ -79,7 +79,7 @@ dsys = trep.discopt.DSystem(mvi, TVec) # Initialize discrete system
 xBar = dsys.build_state(Q=qBar,p = np.zeros(system.nQd)) # Create desired state configuration
 Qd = np.zeros((len(TVec), dsys.system.nQ)) # Initialize desired configuration trajectory
 thetaIndex = dsys.system.get_config('theta').index # Find index of theta config variable
-xcIndex = dsys.system.get_config('xc').index
+xcIndex = dsys.system.get_config('yc').index
 for i,t in enumerate(TVec):
     Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
     Qd[i, xcIndex] = qBar[1]

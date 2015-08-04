@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 
 # set mass, length, and gravity:
-DT = 1./30.
+DT = 1./60.
 M = 0.1 #kg
 L = 1.0 # m
 B = 0.1 # damping
@@ -29,11 +29,11 @@ tf = 15.0
 def build_system():
     sys = trep.System()
     frames = [
-        tx('xc',name=CARTFRAME, kinematic=True), [
-            rz('theta', name="pendShoulder"), [
-                ty(L, name=MASSFRAME, mass=M)]]]
+        ty('yc',name=CARTFRAME, kinematic=True), [ 
+            rx('theta', name="pendulumShoulder"), [
+                tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,-g,0))
+    trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
     return sys
 
@@ -52,7 +52,7 @@ def build_sac_control(sys):
     sacsyst.ts = DT
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
-    sacsyst.u2search = False
+    sacsyst.u2search = True#False
     sacsyst.Q = np.diag([200,10,0,0]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
@@ -77,7 +77,9 @@ T = [sacsys.time]
 Q = [system.q]
 
 while sacsys.time < tf:
+    tic = time.time()
     sacsys.step()
+    toc= time.time()
     t_app = sacsys.t_app[1]-sacsys.t_app[0]
     xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
     fsac = sacsys.controls[0]*M*-1 #SAC resistive force
@@ -89,7 +91,7 @@ while sacsys.time < tf:
     proj_func(qtemp)
     Q = np.vstack((Q,qtemp))
     if np.abs(sacsys.time%1)<DT:
-        print "time = ",sacsys.time
+        print "time = ",toc-tic
         
 # Visualize the system in action
 trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])
