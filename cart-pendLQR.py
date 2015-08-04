@@ -43,11 +43,9 @@ system = build_system()
 # Create and initialize the variational integrator
 mvi = trep.MidpointVI(system)
 mvi.initialize_from_configs(t0, np.array([q0]), t0+DT, np.array([q0]))
-
 qBar = np.array([0.,0.]) # Desired configuration
 Q = np.diag([1,0,1,1]) # Cost weights for states
 R = 0.1*np.eye(1) # Cost weights for inputs
-# Create discrete system
 TVec = np.arange(t0, tf+DT, DT) # Initialize discrete time vector
 dsys = trep.discopt.DSystem(mvi, TVec) # Initialize discrete system
 xBar = dsys.build_state(Q=qBar,p = np.zeros(system.nQd)) # Create desired state configuration

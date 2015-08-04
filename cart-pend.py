@@ -20,7 +20,7 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([3./4.*np.pi,0.]) # x = [x_cart, theta]
+q0 = np.array([3./4.*np.pi,0.]) # x = [theta, xc]
 dq0 = np.array([0., 0.])
 
 # define time parameters:
@@ -70,8 +70,8 @@ system.dq = dq0
 sacsys.init()
 
 # run loop:
-q = np.array((system.q[0], system.dq[0],
-               system.q[1], system.dq[1]))
+q = np.array((system.q[0], system.q[1],
+               system.dq[0], system.dq[1]))
 u = [sacsys.controls[0]]
 T = [sacsys.time]
 Q = [system.q]
