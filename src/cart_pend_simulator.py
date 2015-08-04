@@ -65,7 +65,7 @@ Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
-MAXSTEP = 295. #m/s^2
+MAXSTEP = 35. #m/s^2
 SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -76,44 +76,38 @@ SACFRAME = "SAC"
 NQ = 3 #number of configuration variables in the system
 NU = 1 #number of inputs in the system
 
-def build_system(): #simulated trep system
-    system = trep.System()
+def build_system():
+    sys = trep.System()
     frames = [
-        ty('ys', name='y-stylus', kinematic=True),
-        ty('yc',name=CARTFRAME, mass=M), [
-            rx('theta', name="pendShoulder"), [
-                tz(-L, name=MASSFRAME, mass=M)]]]
-    system.import_frames(frames)
-    trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
-    trep.potentials.Gravity(system, (0,0,-g))
-    trep.forces.Damping(system, B)
-    return system
+        tx('xc',name=CARTFRAME, kinematic=True), [
+            rz('theta', name="pendShoulder"), [
+                ty(L, name=MASSFRAME, mass=M)]]]
+    sys.import_frames(frames)
+    trep.potentials.Gravity(sys, (0,-g,0))
+    trep.forces.Damping(sys, B)
+    return sys
+
+def proj_func(x):
+    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
+    if(x[0] < 0):
+        x[0] = x[0]+2.0*np.pi
+    x[0] = x[0] - np.pi
 
 
-def proj_func(x): #angle wrapping function
-    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
-    if(x[1] < 0):
-        x[1] = x[1]+2.0*np.pi
-    x[1] = x[1] - np.pi
-
-def xdes_func(t, x, xdes):
-     xdes[1] = np.pi
-
-def build_sac_control(system):
-    sacsys=sactrep.Sac(system)
-    sacsys.T = 0.5
-    sacsys.lam = -20.0
-    sacsys.maxdt = 0.2
-    sacsys.ts = DT
-    sacsys.usat = [[MAXSTEP, -MAXSTEP]]
-    sacsys.calc_tm = DT
-    sacsys.u2search = True#False
-    sacsys.Q = np.diag([100,200,100,1,40,1]) # yc,th,ys,ycd,thd,ysd
-    sacsys.P = 0*np.diag([0,10,0,0,0,0])
-    sacsys.R = 0.3*np.identity(NU)
-    sacsys.set_proj_func(proj_func)
-    sacsys.set_xdes_func(xdes_func)
-    return sacsys
+def build_sac_control(sys):
+    sacsyst = sactrep.Sac(sys)
+    sacsyst.T = 0.5
+    sacsyst.lam = -20
+    sacsyst.maxdt = 0.2
+    sacsyst.ts = DT
+    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
+    sacsyst.calc_tm = DT
+    sacsyst.u2search = False
+    sacsyst.Q = np.diag([200,10,0,0]) # th, x, thd, xd
+    sacsyst.P = np.diag([0,0,0,0])
+    sacsyst.R = 0.3*np.identity(1)
+    sacsyst.set_proj_func(proj_func)
+    return sacsyst
 
 class PendSimulator:
 
@@ -226,7 +220,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((SCALE*position[1], 0., SCALE*position[1]))
+        self.q0 = np.array([3./4.*np.pi, SCALE*position[1]])#X=[th,xc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -237,8 +231,8 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app        
+        self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app        
         self.wall = SCALE*position[1]
         
         self.i = 0.
@@ -266,7 +260,7 @@ class PendSimulator:
         self.prev = np.delete(self.prev, -1)
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = self.prev[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('xc'))] = self.prev[0]
         
         # step integrator:
         try:
@@ -327,8 +321,8 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        veltemp = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
+        veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
         self.sacvel = veltemp
