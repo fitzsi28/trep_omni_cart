@@ -52,18 +52,18 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 
-DT = 1./60.
+DT = 1./30.
 TS = 1./5.
-M = 0.1 #kg
+M = 0.2 #kg
 L = 1 # m
-B = 0.1 # damping
+B = 0.01 # damping
 g = 9.81 #m/s^2
 SCALE = 8
 Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
-MAXSTEP = 20. #m/s^2
+MAXSTEP = 35. #m/s^2
 SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -101,7 +101,7 @@ def build_sac_control(sys):
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,10,0,1]) # th, x, thd, xd
+    sacsyst.Q = np.diag([200,150,0,50]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
@@ -342,7 +342,8 @@ class PendSimulator:
         #get force magnitude
         fsac = np.array([0.,0.,0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
-           (self.sacvel < 0 and SCALE*position[1] > self.wall):
+           (self.sacvel < 0 and SCALE*position[1] > self.wall) or \
+            (self.sacvel == 0):
             fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
