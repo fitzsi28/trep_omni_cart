@@ -4,10 +4,9 @@
 Kathleen Fitzsimons
 **modified from trep_omni spherical pendulum simulation
 
-This node runs a timer that looks up the TF from the base link of the omni to
+This node runs 3 timers. (1) that looks up the TF from the base link of the omni to
 the end of the stylus. It then uses the y-portion(right-left) of this pose to 
-drive a trep simulation. SAC is used to provide force feedback and the 
-location of a green marker to guide the user.
+drive a trep simulation. (2) SAC timer computes the optimal action for the current state and uses it to update the location and directionality of a virtual 'wall'. (3) updates the forces to render the virtual wall and calculate the SAC score.
 The position of the cart and pendulum is also published.
 
 SUBSCRIBERS:
@@ -16,7 +15,6 @@ SUBSCRIBERS:
 PUBLISHERS:
     - mass_point (PointStamped)
     - cart_point (PointStamped)
-    - sac_point (PointStamped)
     - visualization_marker_array (MarkerArray)
     - omni1_force_feedback (phantom_omni/OmniFeedback)
 
@@ -65,7 +63,7 @@ Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
 EPS = 0.#10**(-3)
-MAXSTEP = 35. #m/s^2
+MAXSTEP = 20. #m/s^2
 SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
@@ -73,7 +71,7 @@ SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 SACFRAME = "SAC"
-NQ = 3 #number of configuration variables in the system
+NQ = 2 #number of configuration variables in the system
 NU = 1 #number of inputs in the system
 
 def build_system():
@@ -96,14 +94,14 @@ def proj_func(x):
 
 def build_sac_control(sys):
     sacsyst = sactrep.Sac(sys)
-    sacsyst.T = 0.5
-    sacsyst.lam = -20
+    sacsyst.T = 1.2
+    sacsyst.lam = -5
     sacsyst.maxdt = 0.2
     sacsyst.ts = DT
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
-    sacsyst.u2search = True#False
-    sacsyst.Q = np.diag([200,10,0,0]) # th, x, thd, xd
+    sacsyst.u2search = True
+    sacsyst.Q = np.diag([200,10,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
@@ -234,7 +232,7 @@ class PendSimulator:
         self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app        
         self.wall = SCALE*position[1]
-        
+        #reset score values
         self.i = 0.
         self.n = 0.
         return
@@ -304,9 +302,6 @@ class PendSimulator:
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-        
-        #self.render_forces()
-        #self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         self.marker_pub.publish(self.markers)
         return
         
@@ -345,21 +340,18 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         #get force magnitude
-        #fsac = np.array([0.,0.,0.])
+        fsac = np.array([0.,0.,0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
             fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
-            #fsac = np.array([0.,0.,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
+            self.i += 1
         elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
-            #fsac = np.array([0.,100*(self.sacpos-SCALE*position[1]),0.])
-            #fsac = np.array([0.,(SACEFFORT*self.sacsys.controls[0]*self.t_app),0.])
-            fsac = np.array([0.,0.,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-            #self.zflag = True
         else:
-            fsac = np.array([0.,0.,0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
         self.n += 1
@@ -370,7 +362,6 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        #print "accel", (((self.prev[2]-self.prev[1])/DT)-((self.prev[1]-self.prev[0])/DT))/DT
         self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            

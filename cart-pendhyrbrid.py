@@ -7,12 +7,12 @@ import matplotlib.pyplot as plt
 import time
 
 # set mass, length, and gravity:
-DT = 1./30.
+DT = 1./60.
 M = 0.1 #kg
 L = 1.0 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
-MAXSTEP = 35.0 #m/s^2
+MAXSTEP = 20.0 #m/s^2
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -22,7 +22,7 @@ CARTFRAME = "cart"
 lqrflag = False
 
 # define initial config and velocity
-q0 = np.array([3./4.*np.pi, 0.]) # x = [theta, xc]
+q0 = np.array([np.pi, 0.]) # x = [theta, xc]
 dq0 = np.array([0., 0.])
 
 # define time parameters:
@@ -49,14 +49,14 @@ def proj_func(x):
 
 def build_sac_control(sys):
     sacsyst = sactrep.Sac(sys)
-    sacsyst.T = 0.5
-    sacsyst.lam = -20
+    sacsyst.T = 1.2
+    sacsyst.lam = -5
     sacsyst.maxdt = 0.2
     sacsyst.ts = DT
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
-    sacsyst.u2search = False
-    sacsyst.Q = np.diag([200,10,0,0]) # th, x, thd, xd
+    sacsyst.u2search = True
+    sacsyst.Q = np.diag([200,10,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
@@ -100,22 +100,20 @@ T = [sacsys.time]
 Q = [system.q]
 
 while system.t < tf:
-    if Q[-1][0] < 0.01 and -0.01 < Q[-1][0]:
+    if abs(system.q[0]) < 0.15 and abs(system.dq[0])<0.3:
         lqrflag = True
-        print "FLAG!"
-        mvi.initialize_from_configs(T[-3],Q[-3],T[-2],Q[-2])
-        dsys.set(np.array([sacsys.q[0],sacsys.q[1],sacsys.dq[0],sacsys.dq[1]]),\
-                 np.array([sacsys.controls[0]]), round(T[-1]*30))
+        dsys.set(np.array([system.q[0],system.q[1],system.dq[0],system.dq[1]]),\
+                 np.array([sacsys.controls[0]]), round(system.t*60))
+        system.q = dsys.xk[0:1]
+        system.dq= dsys.xk[2:3]
     else:
     	lqrflag=False
         
     if lqrflag == True:
         xTilde = dsys.xk-xBar # Compare to desired state
         ulqr = -np.dot(KStabilize, xTilde) # Calculate input
- 	if ulqr[0] >35: ulqr[0]=35
-        if ulqr[0] < -35: ulqr[0] = -35 
         dsys.step(ulqr) # Step the system forward by one time step
-	u.append(ulqr[0])
+        u.append(ulqr[0])
     else:
         sacsys.step()
 	u.append(sacsys.controls[0])
@@ -139,7 +137,7 @@ trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])
 plt.plot(T,Q)
 plt.plot(T,u)
 plt.legend(['th','x','u'])
-#plt.axis([0,tf,-10,10])
+plt.axis([0,tf,-10,10])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")
 np.savetxt("U_py.csv", u, fmt="%9.6f", delimiter=",")
