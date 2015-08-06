@@ -41,9 +41,11 @@ import visualization_msgs.msg as VM
 # NON-ROS IMPORTS #
 ###################
 import trep
+import trep.discopt
 from trep import tx, ty, tz, rx, ry, rz
 import sactrep
 import numpy as np
+from numpy import dot
 import copy
 import time
 
@@ -53,7 +55,7 @@ import time
 ####################
 
 DT = 1./60.
-TS = 1./5.
+TS = 1./1.
 M = 0.1 #kg
 L = 1 # m
 B = 0.1 # damping
@@ -62,7 +64,6 @@ SCALE = 8
 Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
-EPS = 0.#10**(-3)
 MAXSTEP = 20. #m/s^2
 SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
@@ -92,20 +93,28 @@ def proj_func(x):
     x[0] = x[0] - np.pi
 
 
-def build_sac_control(sys):
-    sacsyst = sactrep.Sac(sys)
-    sacsyst.T = 1.2
-    sacsyst.lam = -5
-    sacsyst.maxdt = 0.2
-    sacsyst.ts = DT
-    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
-    sacsyst.calc_tm = DT
-    sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,10,0,1]) # th, x, thd, xd
-    sacsyst.P = np.diag([0,0,0,0])
-    sacsyst.R = 0.3*np.identity(1)
-    sacsyst.set_proj_func(proj_func)
-    return sacsyst
+def build_lqr_control(sys,mvi, X0):
+    t0 = 0.0 
+    tf = 30.0
+    qBar = np.array([0., 0.]) 
+    Q = np.diag([1,1,1,1]) 
+    R = 0.1*np.eye(1) 
+    TVec = np.arange(t0, tf+DT, DT) 
+    dsyst = trep.discopt.DSystem(mvi, TVec) 
+    xBar0 = dsyst.build_state(Q=qBar,p = np.zeros(sys.nQd)) 
+    Qd = np.zeros((len(TVec), dsyst.system.nQ)) 
+    thetaIndex = dsyst.system.get_config('theta').index 
+    ycIndex = dsyst.system.get_config('yc').index
+    for i,t in enumerate(TVec):
+        Qd[i, thetaIndex] = qBar[0] 
+        Qd[i, ycIndex] = qBar[1]
+        (Xd, Ud) = dsyst.build_trajectory(Qd) 
+    Qk = lambda k: Q 
+    Rk = lambda k: R 
+    KVec = dsyst.calc_feedback_controller(Xd, Ud, Qk, Rk) 
+    KStabilize = KVec[0] 
+    dsyst.set(X0, np.array([0.]), 0)
+    return dsyst, xBar0, KStabilize
 
 class PendSimulator:
 
@@ -115,9 +124,8 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.zflag = False
-        self.sacpos = 0.
-        self.sacvel = 0.
+        self.upos = 0.
+        self.vel = 0.
         self.prev = np.array([0.,0.,0.])
         self.wall=0.
         self.i = 0.
@@ -200,8 +208,8 @@ class PendSimulator:
         
     def setup_integrator(self):
         self.system = build_system()
-        self.sactrep = build_system()
-        self.sacsys = build_sac_control(self.sactrep)
+        self.lqrsys = build_system()
+        self.lqrmvi = trep.MidpointVI(self.lqrsys)
         self.mvi = trep.MidpointVI(self.system)
                             
         # get the position of the omni in the trep frame
@@ -218,19 +226,23 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
+        self.q0 = np.array([0.0, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
-        self.sactrep.q = self.system.q
-        self.sactrep.dq = self.system.dq
-        self.sacsys.init()
-        #compute the SAC control
-        self.sacsys.calc_u()
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        self.lqrmvi.initialize_from_state(0, self.q0, self.dq0)
+        self.lqrsys.q = self.system.q
+        self.lqrsys.dq = self.system.dq
+        X0 = np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
+        self.dsys, self.xBar,self.KStabil = build_lqr_control(self.lqrsys,self.lqrmvi, X0)
+        #compute the LQR control
+        x = self.dsys.xk # Grab current state
+        xTilde = x - self.xBar # Compare to desired state
+        self.u = -dot(self.KStabil, xTilde) # Calculate input
+        #dsys.step(u) # Step the system forward by one time step
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app        
+        self.uvel = self.system.dq[1]+self.u*DT
+        self.upos = self.system.q[1] +0.5*(self.uvel+self.system.dq[1])*DT        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -309,18 +321,18 @@ class PendSimulator:
     def timersac(self,data):
         if not self.running_flag:
             return
-        #compute the SAC control
-        self.sactrep.q = self.system.q
-        self.sactrep.dq = self.system.dq
-        self.sacsys.calc_u()
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        #compute the LQR control
+        x = self.dsys.xk # Grab current state
+        xTilde = x - self.xBar # Compare to desired state
+        self.u = -dot(self.KStabil, xTilde) # Calculate input
+        #dsys.step(u) # Step the system forward by one time step
         
         #convert kinematic acceleration to new velocity&position
-        veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
-        if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
-            self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
-        self.sacvel = veltemp
+        veltemp = self.system.dq[1]+self.u*DT
+        self.upos = self.system.q[1] +0.5*(self.uvel+self.system.dq[1])*DT        
+        if np.sign(self.uvel) != np.sign(veltemp):#update wall if sac changes direction
+            self.wall = self.prev[0]
+        self.uvel = veltemp
         return
     
     def render_forces(self,data):
@@ -341,12 +353,12 @@ class PendSimulator:
             return
         #get force magnitude
         fsac = np.array([0.,0.,0.])
-        if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
-           (self.sacvel < 0 and SCALE*position[1] > self.wall):
+        if (self.uvel > 0 and SCALE*position[1] < self.wall) or \
+           (self.uvel < 0 and SCALE*position[1] > self.wall):
             fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prev[1]-self.prev[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
+        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4) and self.uvel == 0.0:
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
             self.i += 1
         elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):

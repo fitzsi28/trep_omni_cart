@@ -9,7 +9,7 @@ from trep import tx, ty, tz, rx, ry, rz
 import pylab
 
 # Build a pendulum system
-DT = 1./30. # Sampling time
+DT = 1./60. # Sampling time
 M = 0.1 # Mass of pendulum
 L = 1.0 # Length of pendulum
 B = 0.1 #damping
@@ -19,13 +19,8 @@ MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 
 
-X0 = np.array([0.15,-0.5,-0.3,10.0])# Initial configuration of pendulum
-t0 = 0.0 # Initial time
-tf = 15.0# Final time
+X0 = np.array([0.3,0.,0.,0.])# Initial configuration of pendulum
 
-qBar = np.array([0., 0.0]) # Desired configuration
-Q = np.diag([100,0.1,0,0]) # Cost weights for states
-R = 0.01*np.eye(1) # Cost weights for inputs
 
 def build_system():
     sys = trep.System()
@@ -42,40 +37,42 @@ system = build_system()
 
 # Create and initialize the variational integrator
 mvi = trep.MidpointVI(system)
-mvi.initialize_from_configs(t0, X0[0:1], t0+DT, X0[0:1])
+mvi.initialize_from_configs(0.0, X0[0:1], DT, X0[0:1])
 
-# Create discrete system
-TVec = np.arange(t0, tf+DT, DT) # Initialize discrete time vector
-dsys = trep.discopt.DSystem(mvi, TVec) # Initialize discrete system
-xBar = dsys.build_state(Q=qBar,p = np.zeros(system.nQd)) # Create desired state configuration
+def build_lqr_control(sys,mvi, X0):
+    t0 = 0.0 
+    tf = 30.0
+    qBar = np.array([0., 0.]) 
+    Q = np.diag([1,1,1,1]) 
+    R = 0.1*np.eye(1) 
+    TVec = np.arange(t0, tf+DT, DT) 
+    dsyst = trep.discopt.DSystem(mvi, TVec) 
+    xBar0 = dsyst.build_state(Q=qBar,p = np.zeros(sys.nQd)) 
+    Qd = np.zeros((len(TVec), dsyst.system.nQ)) 
+    thetaIndex = dsyst.system.get_config('theta').index 
+    ycIndex = dsyst.system.get_config('yc').index
+    for i,t in enumerate(TVec):
+        Qd[i, thetaIndex] = qBar[0] 
+        Qd[i, ycIndex] = qBar[1]
+        (Xd, Ud) = dsyst.build_trajectory(Qd) 
+    Qk = lambda k: Q 
+    Rk = lambda k: R 
+    KVec = dsyst.calc_feedback_controller(Xd, Ud, Qk, Rk) 
+    KStabilize = KVec[0] 
+    dsyst.set(X0, np.array([0.]), 0)
+    return dsyst, xBar0, KStabilize
 
-# Design linear feedback controller
-Qd = np.zeros((len(TVec), dsys.system.nQ)) # Initialize desired configuration trajectory
-thetaIndex = dsys.system.get_config('theta').index # Find index of theta config variable
-ycIndex = dsys.system.get_config('yc').index
-for i,t in enumerate(TVec):
-    Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
-    Qd[i, ycIndex] = qBar[1]
-    (Xd, Ud) = dsys.build_trajectory(Qd) # Set desired state and input trajectory
-
-Qk = lambda k: Q # Create lambda function for state cost weights
-Rk = lambda k: R # Create lambda function for input cost weights
-KVec = dsys.calc_feedback_controller(Xd, Ud, Qk, Rk) # Solve for linear feedback controller gain
-KStabilize = KVec[0] # Use only use first value to approximate infinite-horizon optimal controller gain
-
-# Reset discrete system state
-dsys.set(X0, np.array([0.]), 0)
-
+dsys,xBar,KStabil = build_lqr_control(system,mvi, X0)
 # Simulate the system forward
 T = [mvi.t1] # List to hold time values
 Q = [mvi.q1] # List to hold configuration values
 X = [dsys.xk] # List to hold state values
 U = [] # List to hold input values
-
+tf=30
 while mvi.t1 < tf-DT:
     x = dsys.xk # Grab current state
     xTilde = x - xBar # Compare to desired state
-    u = -dot(KStabilize, xTilde) # Calculate input
+    u = -dot(KStabil, xTilde) # Calculate input
     dsys.step(u) # Step the system forward by one time step
     T.append(mvi.t1) # Update lists
     Q.append(mvi.q1)
