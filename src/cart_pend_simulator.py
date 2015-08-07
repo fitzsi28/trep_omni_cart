@@ -55,10 +55,10 @@ import time
 DT = 1./60.
 TS = 1./5.
 M = 0.1 #kg
-L = 1 # m
+L = 2.0 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
-SCALE = 8
+SCALE = 16
 Kp = 200.0/SCALE
 Kd = 50.0/SCALE
 WALL = SCALE*0.2
@@ -101,7 +101,7 @@ def build_sac_control(sys):
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,10,0,1]) # th, x, thd, xd
+    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)

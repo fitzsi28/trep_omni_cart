@@ -8,7 +8,7 @@ import time
 # set mass, length, and gravity:
 DT = 1./60.
 M = 0.1 #kg
-L = 1.0 # m
+L = 2.0 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
 MAXSTEP = 20.0 #m/s^2
@@ -53,7 +53,7 @@ def build_sac_control(sys):
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True#False
-    sacsyst.Q = np.diag([200,10,0,1]) # th, x, thd, xd
+    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
