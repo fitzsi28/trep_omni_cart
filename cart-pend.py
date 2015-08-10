@@ -52,7 +52,7 @@ def build_sac_control(sys):
     sacsyst.ts = DT
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
-    sacsyst.u2search = True#False
+    sacsyst.u2search = True
     sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
