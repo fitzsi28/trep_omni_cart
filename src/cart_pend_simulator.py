@@ -6,7 +6,9 @@ Kathleen Fitzsimons
 
 This node runs 3 timers. (1) that looks up the TF from the base link of the omni to
 the end of the stylus. It then uses the y-portion(right-left) of this pose to 
-drive a trep simulation. (2) SAC timer computes the optimal action for the current state and uses it to update the location and directionality of a virtual 'wall'. (3) updates the forces to render the virtual wall and calculate the SAC score.
+drive a trep simulation. (2) SAC timer computes the optimal action for the current
+state and uses it to update the location and directionality of a virtual 'wall'. 
+(3) updates the forces to render the virtual wall and calculate the SAC score.
 The position of the cart and pendulum is also published.
 
 SUBSCRIBERS:
@@ -114,10 +116,10 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.zflag = False
         self.sacpos = 0.
         self.sacvel = 0.
-        self.prev = np.array([0.,0.,0.])
+        self.prevq = np.array([0.,0.,0.])
+        self.prevdq = np.array([0.,0.,0.])
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -229,7 +231,7 @@ class PendSimulator:
         
         #convert kinematic acceleration to new velocity&position
         self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app        
+        self.sacpos = self.system.q[1] + 0.5*(self.sacvel+self.system.dq[1])*self.t_app        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -253,11 +255,13 @@ class PendSimulator:
             return
 
         #update position array
-        self.prev = np.insert(self.prev,0, SCALE*position[1])
-        self.prev = np.delete(self.prev, -1)
+        self.prevq = np.insert(self.prevq,0, SCALE*position[1])
+        self.prevq = np.delete(self.prevq, -1)
+        self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
+        self.prevdq = np.delete(self.prevdq, -1)
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prev[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
         
         # step integrator:
         try:
@@ -317,9 +321,12 @@ class PendSimulator:
         #convert kinematic acceleration to new velocity&position
         veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
+        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
+        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
-            self.wall = self.prev[0]
+            self.wall = self.prevq[0]
         self.sacvel = veltemp
+        print self.usat,"=", self.sacpos
         return
     
     def render_forces(self,data):
@@ -343,21 +350,20 @@ class PendSimulator:
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
             fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
-                             +Kd*(self.prev[1]-self.prev[0]),0.])
+                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
+        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
             #self.i += 1
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
+        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-   #     elif (self.sacvel < 0 and SCALE*position[1] < self.sacpos) or \
-   #        (self.sacvel > 0 and SCALE*position[1] > self.sacpos):
-   #        fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
-   #                          +Kd*(self.prev[1]-self.prev[0]),0.])
-   #         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+        elif abs(self.prevdq[1]-self.prevdq[0]) > 20:#saturation
+            fsac = np.array([0.,10*Kp*(self.prevq[1]-self.prevq[0]),0.])
+            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
+        
         self.n += 1
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         # the following transform was figured out only through
