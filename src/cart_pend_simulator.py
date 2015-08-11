@@ -54,13 +54,15 @@ import time
 # GLOBAL CONSTANTS #
 ####################
 
-DT = 3./100.
+DT = 1./60.
+TS = 1./5.
 M = 0.1 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
+SCALE = 16
 MAXSTEP = 20 #m/s^2
-SACEFFORT=1
+SACEFFORT=0.5
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -70,44 +72,38 @@ SACFRAME = "SAC"
 NQ = 3 #number of configuration variables in the system
 NU = 1 #number of inputs in the system
 
-def build_system(): #simulated trep system
-    system = trep.System()
+def build_system():
+    sys = trep.System()
     frames = [
-        ty('ys', name='y-stylus', kinematic=True),
-        ty('yc',name=CARTFRAME, mass=M), [
-            rx('theta', name="pendShoulder"), [
-                tz(-L, name=MASSFRAME, mass=M)]]]
-    system.import_frames(frames)
-    trep.constraints.PointOnPlane(system, 'y-stylus', (0.,1.0,0.), CARTFRAME)
-    trep.potentials.Gravity(system, (0,0,-g))
-    trep.forces.Damping(system, B)
-    return system
+        ty('yc',name=CARTFRAME, kinematic=True), [ 
+            rx('theta', name="pendulumShoulder"), [
+                tz(L, name=MASSFRAME, mass=M)]]]
+    sys.import_frames(frames)
+    trep.potentials.Gravity(sys, (0,0,-g))
+    trep.forces.Damping(sys, B)
+    return sys
+
+def proj_func(x):
+    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
+    if(x[0] < 0):
+        x[0] = x[0]+2.0*np.pi
+    x[0] = x[0] - np.pi
 
 
-def proj_func(x): #angle wrapping function
-    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
-    if(x[1] < 0):
-        x[1] = x[1]+2.0*np.pi
-    x[1] = x[1] - np.pi
-
-def xdes_func(t, x, xdes):
-     xdes[1] = np.pi
-
-def build_sac_control(system):
-    sacsys=sactrep.Sac(system)
-    sacsys.T = 0.5
-    sacsys.lam = -20
-    sacsys.maxdt = 0.2
-    sacsys.ts = DT
-    sacsys.usat = [[MAXSTEP, -MAXSTEP]]
-    sacsys.calc_tm = DT
-    sacsys.u2search = False
-    sacsys.Q = np.diag([100,200,100,1,50,1]) # yc,th,ys,ycd,thd,ysd
-    sacsys.P = 0*np.diag([0,0,0,0,0,0])
-    sacsys.R = 0.3*np.identity(NU)
-    sacsys.set_proj_func(proj_func)
-    sacsys.set_xdes_func(xdes_func)
-    return sacsys
+def build_sac_control(sys):
+    sacsyst = sactrep.Sac(sys)
+    sacsyst.T = 1.2
+    sacsyst.lam = -5
+    sacsyst.maxdt = 0.2
+    sacsyst.ts = TS#DT
+    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
+    sacsyst.calc_tm = DT
+    sacsyst.u2search = True
+    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
+    sacsyst.P = np.diag([0,0,0,0])
+    sacsyst.R = 0.3*np.identity(1)
+    sacsyst.set_proj_func(proj_func)
+    return sacsyst
 
 class PendSimulator:
 
@@ -118,6 +114,9 @@ class PendSimulator:
         self.running_flag = False
         self.grey_flag = False
         self.fb_flag = 0 # SAC feedback flag
+        self.sacvel = 0.
+        self.sacpos = 0.
+        self.t_app = 0.
 
         # setup markers
         self.setup_markers()
@@ -125,11 +124,11 @@ class PendSimulator:
         # setup publishers, subscribers, timers:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
-        self.mass_pub = rospy.Publisher("mass_point", PointStamped)
-        self.cart_pub = rospy.Publisher("cart_point", PointStamped)
-        self.sac_pub = rospy.Publisher("sac_point", PointStamped)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback)
+        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 2)
+        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 2)
+        self.sac_pub = rospy.Publisher("sac_point", PointStamped, queue_size = 2)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 2)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback, queue_size = 2)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -156,7 +155,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.mass_marker)
         self.sac_marker.type = VM.Marker.ARROW
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(10*DT)
+        self.sac_marker.lifetime = rospy.Duration(5*DT)
         self.sac_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
         self.sac_marker.id = 2
         #cart marker
@@ -195,7 +194,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array((2*position[1], 0.0, 2*position[1]))
+        self.q0 = np.array((np.pi, SCALE*position[1]))
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.system.q = self.mvi.q1
@@ -221,14 +220,15 @@ class PendSimulator:
 
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('ys'))] = 2*position[1]
+        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = SCALE*position[1]
         
         #compute the SAC control
         self.sacsys.calc_u()
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-#convert kinematic acceleration to new position of SAC marker/change in position amplified by 6
-        self.usac = self.system.q[0]+6*((self.system.dq[0]*self.t_app) + (0.5*self.sacsys.controls[0]*self.t_app*self.t_app))
-                   
+        #convert kinematic acceleration to new velocity&position
+        self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app      
+                  
         # step integrator:
         try:
             self.mvi.step(self.mvi.t2 + DT,k2=ucont)
@@ -252,7 +252,7 @@ class PendSimulator:
         qtrans = TR.quaternion_from_matrix(gwm)
         self.br.sendTransform(ptrans, qtrans, p.header.stamp, MASSFRAME, SIMFRAME)
         ##cart sim   
- 	pc = PointStamped()
+        pc = PointStamped()
         pc.header.stamp = rospy.Time.now()
         pc.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
@@ -266,15 +266,14 @@ class PendSimulator:
         # now we can send the transform:
         qtransc = TR.quaternion_from_matrix(gwc)
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
-       
         ##sac sim   
- 	pu = PointStamped()
+        pu = PointStamped()
         pu.header.stamp = rospy.Time.now()
         pu.header.frame_id = SIMFRAME
         # get transform from trep world to cart frame:
-	gwu = copy.copy(gwc)
-        gwu.itemset((1,3), self.usac)
-	ptransu = gwu[0:3, -1]
+        gwu = copy.copy(gwc)
+        gwu.itemset((1,3), self.sacpos)
+        ptransu = gwu[0:3, -1]
         # print ptransc
         pu.point.x = ptransu[0]
         pu.point.y = ptransu[1]
@@ -292,20 +291,19 @@ class PendSimulator:
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
-       
+        
         # now we can render the forces and update the SAC Marker every other iteration:
-        if self.fb_flag < 1:
+        if self.fb_flag < DT/TS:
             self.render_forces()
             self.sac_marker.points = [GM.Point(*ptransc), GM.Point(*ptransu)]
             self.fb_flag += 1
         else:
             self.fb_flag = 0
-
-        self.marker_pub.publish(self.markers)
-  
-        return
         
-
+        self.marker_pub.publish(self.markers)
+        
+        return
+    
     def render_forces(self):
         # get the position of the stylus in the omni's base frame
         if self.listener.frameExists(BASEFRAME) and self.listener.frameExists(CONTFRAME):
