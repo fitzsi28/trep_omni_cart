@@ -63,9 +63,7 @@ g = 9.81 #m/s^2
 SCALE = 16
 Kp = 200.0/SCALE
 Kd = 50.0/SCALE
-WALL = SCALE*0.2
 MAXSTEP = 20. #m/s^2
-SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -116,9 +114,10 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
+        self.usat = 0.
         self.sacpos = 0.
         self.sacvel = 0.
-        self.prevq = np.array([0.,0.,0.])
+        self.prevq = np.array([0.,0.,0.,0.,0.])
         self.prevdq = np.array([0.,0.,0.])
         self.wall=0.
         self.i = 0.
@@ -163,7 +162,7 @@ class PendSimulator:
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
         self.cart_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
-        self.cart_marker.id = 3
+        self.cart_marker.id = 2
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
@@ -174,7 +173,7 @@ class PendSimulator:
         p2 = np.array([0.0,0.15,0.3])
         p3 = np.array([0.0,-0.1,0.2])
         self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
-        self.sac_marker.id = 2
+        self.sac_marker.id = 3
         # score marker
         self.score_marker = copy.deepcopy(self.mass_marker)
         self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
@@ -254,7 +253,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        #update position array
+        #update position and velocity arrays
         self.prevq = np.insert(self.prevq,0, SCALE*position[1])
         self.prevq = np.delete(self.prevq, -1)
         self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
@@ -326,7 +325,9 @@ class PendSimulator:
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prevq[0]
         self.sacvel = veltemp
-        print self.usat,"=", self.sacpos
+        #update the saturation 'wall'
+        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
+        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         return
     
     def render_forces(self,data):
@@ -357,13 +358,15 @@ class PendSimulator:
             #self.i += 1
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-        elif abs(self.prevdq[1]-self.prevdq[0]) > 20:#saturation
-            fsac = np.array([0.,10*Kp*(self.prevq[1]-self.prevq[0]),0.])
+        elif (self.sacvel < 0 and np.average(self.prevq) < self.usat) or \
+           (self.sacvel > 0 and np.average(self.prevq) > self.usat):
+            fsac = np.array([0.,Kp*(self.usat-np.average(self.prevq)) \
+                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
+            self.i += 1
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
-        
         self.n += 1
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         # the following transform was figured out only through
