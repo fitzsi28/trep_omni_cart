@@ -6,7 +6,9 @@ Kathleen Fitzsimons
 
 This node runs 3 timers. (1) that looks up the TF from the base link of the omni to
 the end of the stylus. It then uses the y-portion(right-left) of this pose to 
-drive a trep simulation. (2) SAC timer computes the optimal action for the current state and uses it to update the location and directionality of a virtual 'wall'. (3) updates the forces to render the virtual wall and calculate the SAC score.
+drive a trep simulation. (2) SAC timer computes the optimal action for the current
+state and uses it to update the location and directionality of a virtual 'wall'. 
+(3) updates the forces to render the virtual wall and calculate the SAC score.
 The position of the cart and pendulum is also published.
 
 SUBSCRIBERS:
@@ -58,13 +60,10 @@ M = 0.2 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-SCALE = 8
+SCALE = 16
 Kp = 200.0/SCALE
 Kd = 50.0/SCALE
-WALL = SCALE*0.2
-EPS = 0.#10**(-3)
 MAXSTEP = 35. #m/s^2
-SACEFFORT=1.0*SCALE
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -97,7 +96,7 @@ def build_sac_control(sys):
     sacsyst.T = 1.2
     sacsyst.lam = -5
     sacsyst.maxdt = 0.2
-    sacsyst.ts = DT
+    sacsyst.ts = TS#DT
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
@@ -115,10 +114,11 @@ class PendSimulator:
         # define running flag:
         self.running_flag = False
         self.grey_flag = False
-        self.zflag = False
+        self.usat = 0.
         self.sacpos = 0.
         self.sacvel = 0.
-        self.prev = np.array([0.,0.,0.])
+        self.prevq = np.array([0.,0.,0.,0.,0.])
+        self.prevdq = np.array([0.,0.,0.])
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -148,43 +148,43 @@ class PendSimulator:
         self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
         self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
         self.mass_marker.lifetime = rospy.Duration(4*DT)
-        self.mass_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+        self.mass_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
         self.mass_marker.type = VM.Marker.SPHERE
         self.mass_marker.id = 0
         # link marker
         self.link_marker = copy.deepcopy(self.mass_marker)
         self.link_marker.type = VM.Marker.LINE_STRIP
         self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
-        self.link_marker.scale = GM.Vector3(*[0.005, 0.05, 0.05])
+        self.link_marker.scale = GM.Vector3(*[0.01, 0.05, 0.05])
         self.link_marker.id = 1
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
-        self.cart_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
-        self.cart_marker.id = 3
+        self.cart_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
+        self.cart_marker.id = 2
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.sac_marker.lifetime = rospy.Duration(3*DT)
-        self.sac_marker.scale = GM.Vector3(*[0.015, 0.015, 0.015])
+        self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
         p1 = np.array([0.0,0.0,0.1])
-        p2 = np.array([0.0,0.075,0.2])
-        p3 = np.array([0.0,-0.05,0.15])
+        p2 = np.array([0.0,0.15,0.3])
+        p3 = np.array([0.0,-0.1,0.2])
         self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
-        self.sac_marker.id = 2
+        self.sac_marker.id = 3
         # score marker
         self.score_marker = copy.deepcopy(self.mass_marker)
         self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
         self.score_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.score_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+        self.score_marker.scale = GM.Vector3(*[0.12, 0.12, 0.12])
         self.score_marker.pose.position.x = 0;
         self.score_marker.pose.position.y = 0;
-        self.score_marker.pose.position.z = 0.2;
+        self.score_marker.pose.position.z = 0.5;
         self.score_marker.pose.orientation.x = 0.0;
         self.score_marker.pose.orientation.y = 0.0;
-        self.score_marker.pose.orientation.z = 0.0;
+        self.score_marker.pose.orientation.z = 0.2;
         self.score_marker.pose.orientation.w = 1.0;
         self.score_marker.text = "0%"
         self.score_marker.id = 4
@@ -230,7 +230,7 @@ class PendSimulator:
         
         #convert kinematic acceleration to new velocity&position
         self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app        
+        self.sacpos = self.system.q[1] + 0.5*(self.sacvel+self.system.dq[1])*self.t_app        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -253,12 +253,14 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        #update position array
-        self.prev = np.insert(self.prev,0, SCALE*position[1])
-        self.prev = np.delete(self.prev, -1)
+        #update position and velocity arrays
+        self.prevq = np.insert(self.prevq,0, SCALE*position[1])
+        self.prevq = np.delete(self.prevq, -1)
+        self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
+        self.prevdq = np.delete(self.prevdq, -1)
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prev[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
         
         # step integrator:
         try:
@@ -318,9 +320,14 @@ class PendSimulator:
         #convert kinematic acceleration to new velocity&position
         veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
+        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
+        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
-            self.wall = self.prev[0]+np.sign(self.sacvel)*EPS
+            self.wall = self.prevq[0]
         self.sacvel = veltemp
+        #update the saturation 'wall'
+        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
+        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         return
     
     def render_forces(self,data):
@@ -345,13 +352,19 @@ class PendSimulator:
            (self.sacvel < 0 and SCALE*position[1] > self.wall) or \
             (self.sacvel == 0):
             fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
-                             +Kd*(self.prev[1]-self.prev[0]),0.])
+                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
+        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
-            self.i += 1
-        elif abs(SCALE*position[1] - self.prev[1]) < SCALE*10**(-4):
+            #self.i += 1
+        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+        elif (self.sacvel < 0 and np.average(self.prevq) < self.usat) or \
+           (self.sacvel > 0 and np.average(self.prevq) > self.usat):
+            fsac = np.array([0.,Kp*(self.usat-np.average(self.prevq)) \
+                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
+            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
+            self.i += 1
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 
 # set mass, length, and gravity:
-DT = 1./30.
+DT = 1./5.
 M = 0.2 #kg
 L = 1.0 # m
 B = 0.01 # damping
