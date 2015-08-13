@@ -148,40 +148,40 @@ class PendSimulator:
         self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
         self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
         self.mass_marker.lifetime = rospy.Duration(4*DT)
-        self.mass_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
+        self.mass_marker.scale = GM.Vector3(*[0.2, 0.2, 0.2])
         self.mass_marker.type = VM.Marker.SPHERE
         self.mass_marker.id = 0
         # link marker
         self.link_marker = copy.deepcopy(self.mass_marker)
         self.link_marker.type = VM.Marker.LINE_STRIP
         self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
-        self.link_marker.scale = GM.Vector3(*[0.01, 0.05, 0.05])
+        self.link_marker.scale = GM.Vector3(*[0.05, 0.2, 0.2])
         self.link_marker.id = 1
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
-        self.cart_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
+        self.cart_marker.scale = GM.Vector3(*[0.2, 0.2, 0.2])
         self.cart_marker.id = 2
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         self.sac_marker.lifetime = rospy.Duration(3*DT)
-        self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+        self.sac_marker.scale = GM.Vector3(*[0.1, 0.15, 0.1])
         p1 = np.array([0.0,0.0,0.1])
-        p2 = np.array([0.0,0.15,0.3])
-        p3 = np.array([0.0,-0.1,0.2])
+        p2 = np.array([0.0,0.3,0.65])
+        p3 = np.array([0.0,-0.25,0.4])
         self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
         self.sac_marker.id = 3
         # score marker
         self.score_marker = copy.deepcopy(self.mass_marker)
         self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
         self.score_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.score_marker.scale = GM.Vector3(*[0.12, 0.12, 0.12])
+        self.score_marker.scale = GM.Vector3(*[0.3, 0.3, 0.3])
         self.score_marker.pose.position.x = 0;
         self.score_marker.pose.position.y = 0;
-        self.score_marker.pose.position.z = 0.5;
+        self.score_marker.pose.position.z = 1.0;
         self.score_marker.pose.orientation.x = 0.0;
         self.score_marker.pose.orientation.y = 0.0;
         self.score_marker.pose.orientation.z = 0.2;
@@ -268,7 +268,11 @@ class PendSimulator:
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-                     
+        if abs(self.mvi.q2[0]) < 0.15 and abs(self.system.dq[0]) < 0.6:
+            rospy.loginfo("Success Time: %s"%self.system.t)
+            rospy.loginfo("Final Score: %s"%(self.i/self.n))
+            #self.running_flag = False
+            #rospy.loginfo("system.dq,%s"%self.system.dq)
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -354,7 +358,7 @@ class PendSimulator:
                              +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
-            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
             #self.i += 1
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
@@ -362,7 +366,7 @@ class PendSimulator:
            (self.sacvel > 0 and np.average(self.prevq) > self.usat):
             fsac = np.array([0.,Kp*(self.usat-np.average(self.prevq)) \
                              +Kd*(self.prevq[1]-self.prevq[0]),0.])
-            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
+            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 0.0])
             self.i += 1
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
