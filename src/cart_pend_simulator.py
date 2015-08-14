@@ -167,7 +167,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(3*DT)
+        self.sac_marker.lifetime = rospy.Duration(2*DT)
         self.sac_marker.scale = GM.Vector3(*[0.1, 0.15, 0.1])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.3,0.65])
@@ -268,10 +268,13 @@ class PendSimulator:
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-        if abs(self.mvi.q2[0]) < 0.15 and abs(self.system.dq[0]) < 0.6:
+        
+        qtemp = self.system.q
+        proj_func(qtemp)
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6:
             rospy.loginfo("Success Time: %s"%self.system.t)
-            rospy.loginfo("Final Score: %s"%(self.i/self.n))
-            #self.running_flag = False
+            rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
+            self.running_flag = False
             #rospy.loginfo("system.dq,%s"%self.system.dq)
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
@@ -366,7 +369,7 @@ class PendSimulator:
            (self.sacvel > 0 and np.average(self.prevq) > self.usat):
             fsac = np.array([0.,Kp*(self.usat-np.average(self.prevq)) \
                              +Kd*(self.prevq[1]-self.prevq[0]),0.])
-            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 0.0])
+            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
             self.i += 1
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
