@@ -35,6 +35,7 @@ from geometry_msgs.msg import TransformStamped
 import geometry_msgs.msg as GM
 from phantom_omni.msg import PhantomButtonEvent
 from phantom_omni.msg import OmniFeedback
+from trep_omni_cart.msg import trepsys
 from std_msgs.msg import ColorRGBA
 import visualization_msgs.msg as VM
 
@@ -130,9 +131,10 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.force_timer = rospy.Timer(rospy.Duration(DT),self.render_forces)
+        self.force_timer = rospy.Timer(rospy.Duration(1./100.),self.render_forces)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
+        self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 2)
         self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 1)
         self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 1)
         self.br = tf.TransformBroadcaster()
@@ -167,7 +169,7 @@ class PendSimulator:
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(2*DT)
+        self.sac_marker.lifetime = rospy.Duration(DT)
         self.sac_marker.scale = GM.Vector3(*[0.1, 0.15, 0.1])
         p1 = np.array([0.0,0.0,0.1])
         p2 = np.array([0.0,0.3,0.65])
@@ -252,7 +254,14 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-
+        temp = trepsys()
+        temp.sys_time = self.system.t
+        temp.theta = self.system.q[0]
+        temp.y = self.system.q[1]
+        temp.dtheta = self.system.dq[0]
+        temp.dy = self.system.dq[1]
+        temp.sac = self.sacsys.controls[0]
+        self.trep_pub.publish(temp)
         #update position and velocity arrays
         self.prevq = np.insert(self.prevq,0, SCALE*position[1])
         self.prevq = np.delete(self.prevq, -1)
@@ -271,7 +280,7 @@ class PendSimulator:
         
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6:
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%self.system.t)
             rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
             self.running_flag = False

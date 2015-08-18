@@ -51,10 +51,9 @@ echo "Press any button to start recording data..."
 read -n 1 -s
 echo "Beginning recording..."
 # Start recording bag file:
-rosbag record --quiet -O ${filename}.bag -e "(.*)meas_config" "(.*)ref_config" \
-    "(.*)filt_state" "(.*)filt_config" "(.*)serial_commands" "(.*)serviced_values" \
-    "(.*)post_covariance" "(.*)object1_position" "(.*)robot_kinect_position" \
-    "(.*)tf" "(.*)start_time" "(.*)optimization_data" "(.*)mass_ref_point"&
+rosbag record --quiet -O ${filename}.bag -e "(.*)cart_point" "(.*)mass_point" \
+    "(.*)omni1_force_feedback" "(.*)trep_sys" "(.*)omni1_button" \
+    "(.*)visualization_marker_array"&
 # start recording Kinect video if we should:
 if ${VIDEO}
 then
@@ -71,12 +70,12 @@ sleep 2
 echo "Generating csv file..."
 # Generate default csv files:
 info=`rosbag info ${filename}.bag`
-meas=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'meas_config'`
-filt=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'filt_config'`
-ref=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'ref_config'`
-ser=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'serial_commands'`
-rostopic echo -p -b ${filename}.bag $filt > ${filename}_filt.txt 
-rostopic echo -p -b ${filename}.bag $meas > ${filename}_meas.txt 
-rostopic echo -p -b ${filename}.bag $ref > ${filename}_ref.txt 
-rostopic echo -p -b ${filename}.bag $ser > ${filename}_ser.txt 
+cart=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'cart_point'`
+ff=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'omni1_force_feedback'`
+mass=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'mass_point'`
+trep=`echo $info | grep -e '\ \/[^ ]*' -o |grep -e 'trep_sys'`
+rostopic echo -p -b ${filename}.bag $ff > ${filename}_ff.txt 
+rostopic echo -p -b ${filename}.bag $cart > ${filename}_cart.txt 
+rostopic echo -p -b ${filename}.bag $mass > ${filename}_mass.txt 
+rostopic echo -p -b ${filename}.bag $trep > ${filename}_trep.txt 
 echo "Done creating bag and csv file"
