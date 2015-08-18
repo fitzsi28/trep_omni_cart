@@ -57,14 +57,17 @@ import time
 
 DT = 1./60.
 TS = 1./5.
+DT2 = 1./300.
 M = 0.1 #kg
 L = 2.0 # m
 B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 16
-Kp = 200.0/SCALE
+Kp = 300.0/SCALE
 Kd = 50.0/SCALE
+Ks = 100.0/SCALE
 MAXSTEP = 20. #m/s^2
+MAXVEL = 12. #m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -107,6 +110,13 @@ def build_sac_control(sys):
     sacsyst.set_proj_func(proj_func)
     return sacsyst
 
+def sat_func(v):
+    if v > 0:
+        f = -10./(1.+np.exp(-0.5*(v-MAXVEL)))
+    else:
+        f = 10./(1.+np.exp(0.5*(v+MAXVEL)))
+    return f
+
 class PendSimulator:
 
     def __init__(self):
@@ -118,8 +128,8 @@ class PendSimulator:
         self.usat = 0.
         self.sacpos = 0.
         self.sacvel = 0.
-        self.prevq = np.array([0.,0.,0.,0.,0.])
-        self.prevdq = np.array([0.,0.,0.])
+        self.prevq = np.zeros(5)
+        self.prevdq = np.zeros(10)
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -131,7 +141,7 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.force_timer = rospy.Timer(rospy.Duration(1./100.),self.render_forces)
+        self.force_timer = rospy.Timer(rospy.Duration(DT2),self.render_forces)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
         self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 2)
@@ -254,19 +264,13 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-        temp = trepsys()
-        temp.sys_time = self.system.t
-        temp.theta = self.system.q[0]
-        temp.y = self.system.q[1]
-        temp.dtheta = self.system.dq[0]
-        temp.dy = self.system.dq[1]
-        temp.sac = self.sacsys.controls[0]
-        self.trep_pub.publish(temp)
+        
         #update position and velocity arrays
         self.prevq = np.insert(self.prevq,0, SCALE*position[1])
         self.prevq = np.delete(self.prevq, -1)
         self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
         self.prevdq = np.delete(self.prevdq, -1)
+        
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
         ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
@@ -277,14 +281,16 @@ class PendSimulator:
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
+        temp = trepsys()
+        temp.sys_time = self.system.t
+        temp.theta = self.system.q[0]
+        temp.y = self.system.q[1]
+        temp.dtheta = self.system.dq[0]
+        temp.dy = self.system.dq[1]
+        temp.sac = self.sacsys.controls[0]
+        self.trep_pub.publish(temp)
         
-        qtemp = self.system.q
-        proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
-            rospy.loginfo("Success Time: %s"%self.system.t)
-            rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
-            self.running_flag = False
-            #rospy.loginfo("system.dq,%s"%self.system.dq)
+        
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -321,6 +327,13 @@ class PendSimulator:
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         self.marker_pub.publish(self.markers)
+        qtemp = self.system.q
+        proj_func(qtemp)
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
+            rospy.loginfo("Success Time: %s"%self.system.t)
+            rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
+            self.running_flag = False
+            #rospy.loginfo("system.dq,%s"%self.system.dq)
         return
         
 
@@ -336,14 +349,9 @@ class PendSimulator:
         #convert kinematic acceleration to new velocity&position
         veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
-        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
-        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prevq[0]
         self.sacvel = veltemp
-        #update the saturation 'wall'
-        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
-        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         return
     
     def render_forces(self,data):
@@ -363,23 +371,18 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         #get force magnitude
-        fsac = np.array([0.,0.,0.])
+        #temp = np.average(self.prevdq,weights=[0.25,0.25,0.25,0.15,0.1])
+        fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
             fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
-            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
             #self.i += 1
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-        elif (self.sacvel < 0 and np.average(self.prevq) < self.usat) or \
-           (self.sacvel > 0 and np.average(self.prevq) > self.usat):
-            fsac = np.array([0.,Kp*(self.usat-np.average(self.prevq)) \
-                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
-            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
-            self.i += 1
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
