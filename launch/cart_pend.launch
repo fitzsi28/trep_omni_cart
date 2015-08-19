@@ -1,6 +1,7 @@
 <launch>
   <!-- ARGUMENT DEFINITIONS -->
   <arg name="vis" default="false" /> <!-- run rviz? -->
+  <arg name="replay" default="false" /> <!-- replay bag file? -->
 
   <!-- static transform from omni base to trep world -->
   <node pkg="tf" type="static_transform_publisher" name="base_trep_broadcaster"
@@ -10,9 +11,16 @@
   <include file="$(find phantom_omni)/launch/omni_headless.launch" />
 
   <!-- startup simulator node -->
-  <node pkg="trep_omni_cart" type="cart_pend_simulator.py" name="simulator"
+  <group unless="$(arg replay)">
+    <node pkg="trep_omni_cart" type="cart_pend_simulator.py" name="simulator"
 	respawn="true" output="screen" />
-  
+  </group>
+    
+  <!-- startup simulator node -->
+  <group if="$(arg replay)">
+    <param name="use_sim_time" value="true" />
+  </group>
+    
   <!-- rviz if needed -->
   <group if="$(arg vis)">
     <node pkg="rviz" type="rviz" respawn="false" name="rviz" 

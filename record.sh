@@ -53,7 +53,7 @@ echo "Beginning recording..."
 # Start recording bag file:
 rosbag record --quiet -O ${filename}.bag -e "(.*)cart_point" "(.*)mass_point" \
     "(.*)omni1_force_feedback" "(.*)trep_sys" "(.*)omni1_button" \
-    "(.*)visualization_marker_array"&
+    "(.*)visualization_marker_array" "(.*)tf"&
 # start recording Kinect video if we should:
 if ${VIDEO}
 then

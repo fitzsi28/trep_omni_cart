@@ -67,7 +67,7 @@ Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 Ks = 100.0/SCALE
 MAXSTEP = 20. #m/s^2
-MAXVEL = 12. #m/s
+MAXVEL = 8. #m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -286,7 +286,7 @@ class PendSimulator:
         temp.theta = self.system.q[0]
         temp.y = self.system.q[1]
         temp.dtheta = self.system.dq[0]
-        temp.dy = self.system.dq[1]
+        temp.dy = np.average(self.prevdq)
         temp.sac = self.sacsys.controls[0]
         self.trep_pub.publish(temp)
         
@@ -333,6 +333,7 @@ class PendSimulator:
             rospy.loginfo("Success Time: %s"%self.system.t)
             rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
             self.running_flag = False
+            self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
             #rospy.loginfo("system.dq,%s"%self.system.dq)
         return
         
