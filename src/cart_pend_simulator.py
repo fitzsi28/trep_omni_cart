@@ -112,9 +112,9 @@ def build_sac_control(sys):
 
 def sat_func(v):
     if v > 0:
-        f = -10./(1.+np.exp(-0.5*(v-MAXVEL)))
+        f = -15./(1.+np.exp(-0.8*(v-MAXVEL)))
     else:
-        f = 10./(1.+np.exp(0.5*(v+MAXVEL)))
+        f = 15./(1.+np.exp(0.8*(v+MAXVEL)))
     return f
 
 class PendSimulator:
@@ -129,7 +129,7 @@ class PendSimulator:
         self.sacpos = 0.
         self.sacvel = 0.
         self.prevq = np.zeros(5)
-        self.prevdq = np.zeros(10)
+        self.prevdq = np.zeros(20)
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -142,11 +142,11 @@ class PendSimulator:
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
         self.force_timer = rospy.Timer(rospy.Duration(DT2),self.render_forces)
-        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
-        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
-        self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 2)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 1)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 1)
+        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 3)
+        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 3)
+        self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 3)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 2)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 2)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -247,6 +247,8 @@ class PendSimulator:
         #reset score values
         self.i = 0.
         self.n = 0.
+        self.prevq = np.zeros(5)
+        self.prevdq = np.zeros(20)
         return
 
     def timercb(self, data):
@@ -332,9 +334,8 @@ class PendSimulator:
         if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%self.system.t)
             rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
-            self.running_flag = False
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
-            #rospy.loginfo("system.dq,%s"%self.system.dq)
+            self.running_flag = False
         return
         
 
@@ -372,11 +373,10 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         #get force magnitude
-        #temp = np.average(self.prevdq,weights=[0.25,0.25,0.25,0.15,0.1])
         fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
-            fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
+            fsac = fsac+np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
