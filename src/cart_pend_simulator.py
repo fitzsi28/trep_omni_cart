@@ -67,7 +67,7 @@ Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 Ks = 100.0/SCALE
 MAXSTEP = 20. #m/s^2
-MAXVEL = 8. #m/s
+MAXVEL = 7.0#m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -111,10 +111,7 @@ def build_sac_control(sys):
     return sacsyst
 
 def sat_func(v):
-    if v > 0:
-        f = -15./(1.+np.exp(-0.8*(v-MAXVEL)))
-    else:
-        f = 15./(1.+np.exp(0.8*(v+MAXVEL)))
+    f = -15./(1.+np.exp(-1.0*(v-MAXVEL))) + 15./(1.+np.exp(1.0*(v+MAXVEL)))
     return f
 
 class PendSimulator:
@@ -145,8 +142,8 @@ class PendSimulator:
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 3)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 3)
         self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 3)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 2)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 2)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 3)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 3)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -288,7 +285,7 @@ class PendSimulator:
         temp.theta = self.system.q[0]
         temp.y = self.system.q[1]
         temp.dtheta = self.system.dq[0]
-        temp.dy = np.average(self.prevdq)
+        temp.dy = self.system.dq[1] #np.average(self.prevdq)
         temp.sac = self.sacsys.controls[0]
         self.trep_pub.publish(temp)
         
