@@ -35,6 +35,7 @@ from geometry_msgs.msg import TransformStamped
 import geometry_msgs.msg as GM
 from phantom_omni.msg import PhantomButtonEvent
 from phantom_omni.msg import OmniFeedback
+from trep_omni_cart.msg import trepsys
 from std_msgs.msg import ColorRGBA
 import visualization_msgs.msg as VM
 
@@ -56,14 +57,16 @@ import time
 
 DT = 1./30.
 TS = 1./5.
+DT2 = 1./300.
 M = 0.2 #kg
 L = 1 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
 SCALE = 16
-Kp = 200.0/SCALE
+Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 MAXSTEP = 35. #m/s^2
+MAXVEL = 2.5 #m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -106,6 +109,10 @@ def build_sac_control(sys):
     sacsyst.set_proj_func(proj_func)
     return sacsyst
 
+def sat_func(v):
+    f = -15./(1.+np.exp(-2.0*(v-MAXVEL)))+15./(1.+np.exp(2.0*(v+MAXVEL)))
+    return f
+
 class PendSimulator:
 
     def __init__(self):
@@ -117,8 +124,8 @@ class PendSimulator:
         self.usat = 0.
         self.sacpos = 0.
         self.sacvel = 0.
-        self.prevq = np.array([0.,0.,0.,0.,0.])
-        self.prevdq = np.array([0.,0.,0.])
+        self.prevq = np.zeros(5)
+        self.prevdq = np.zeros(20)
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -130,11 +137,12 @@ class PendSimulator:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
         self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
-        self.force_timer = rospy.Timer(rospy.Duration(DT),self.render_forces)
-        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 1)
-        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 1)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 1)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 1)
+        self.force_timer = rospy.Timer(rospy.Duration(DT2),self.render_forces)
+        self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 3)
+        self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 3)
+        self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 3)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 3)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 3)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -148,40 +156,40 @@ class PendSimulator:
         self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
         self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
         self.mass_marker.lifetime = rospy.Duration(4*DT)
-        self.mass_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
+        self.mass_marker.scale = GM.Vector3(*[0.2, 0.2, 0.2])
         self.mass_marker.type = VM.Marker.SPHERE
         self.mass_marker.id = 0
         # link marker
         self.link_marker = copy.deepcopy(self.mass_marker)
         self.link_marker.type = VM.Marker.LINE_STRIP
         self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
-        self.link_marker.scale = GM.Vector3(*[0.01, 0.05, 0.05])
+        self.link_marker.scale = GM.Vector3(*[0.05, 0.2, 0.2])
         self.link_marker.id = 1
         #cart marker
         self.cart_marker = copy.deepcopy(self.mass_marker)
         self.cart_marker.type = VM.Marker.CUBE
         self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
-        self.cart_marker.scale = GM.Vector3(*[0.1, 0.1, 0.1])
+        self.cart_marker.scale = GM.Vector3(*[0.2, 0.2, 0.2])
         self.cart_marker.id = 2
         #sac marker
         self.sac_marker = copy.deepcopy(self.cart_marker)
         self.sac_marker.type = VM.Marker.LINE_STRIP
         self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(3*DT)
-        self.sac_marker.scale = GM.Vector3(*[0.05, 0.05, 0.05])
+        self.sac_marker.lifetime = rospy.Duration(DT)
+        self.sac_marker.scale = GM.Vector3(*[0.1, 0.15, 0.1])
         p1 = np.array([0.0,0.0,0.1])
-        p2 = np.array([0.0,0.15,0.3])
-        p3 = np.array([0.0,-0.1,0.2])
+        p2 = np.array([0.0,0.3,0.65])
+        p3 = np.array([0.0,-0.25,0.4])
         self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
         self.sac_marker.id = 3
         # score marker
         self.score_marker = copy.deepcopy(self.mass_marker)
         self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
         self.score_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.score_marker.scale = GM.Vector3(*[0.12, 0.12, 0.12])
+        self.score_marker.scale = GM.Vector3(*[0.3, 0.3, 0.3])
         self.score_marker.pose.position.x = 0;
         self.score_marker.pose.position.y = 0;
-        self.score_marker.pose.position.z = 0.5;
+        self.score_marker.pose.position.z = 1.0;
         self.score_marker.pose.orientation.x = 0.0;
         self.score_marker.pose.orientation.y = 0.0;
         self.score_marker.pose.orientation.z = 0.2;
@@ -235,6 +243,8 @@ class PendSimulator:
         #reset score values
         self.i = 0.
         self.n = 0.
+        self.prevq = np.zeros(5)
+        self.prevdq = np.zeros(20)
         return
 
     def timercb(self, data):
@@ -252,12 +262,13 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-
+        
         #update position and velocity arrays
         self.prevq = np.insert(self.prevq,0, SCALE*position[1])
         self.prevq = np.delete(self.prevq, -1)
         self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
         self.prevdq = np.delete(self.prevdq, -1)
+        
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
         ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
@@ -268,7 +279,16 @@ class PendSimulator:
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-                     
+        temp = trepsys()
+        temp.sys_time = self.system.t
+        temp.theta = self.system.q[0]
+        temp.y = self.system.q[1]
+        temp.dtheta = self.system.dq[0]
+        temp.dy = self.system.dq[1]#np.average(self.prevdq)self.system.dq[1]
+        temp.sac = self.sacsys.controls[0]
+        self.trep_pub.publish(temp)
+        
+        
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -305,6 +325,13 @@ class PendSimulator:
         self.link_marker.points = [p1, p2]
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         self.marker_pub.publish(self.markers)
+        qtemp = self.system.q
+        proj_func(qtemp)
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
+            rospy.loginfo("Success Time: %s"%self.system.t)
+            rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
+            self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
+            self.running_flag = False
         return
         
 
@@ -320,14 +347,9 @@ class PendSimulator:
         #convert kinematic acceleration to new velocity&position
         veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
-        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
-        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prevq[0]
         self.sacvel = veltemp
-        #update the saturation 'wall'
-        self.usat = self.system.q[1]+ ((self.system.dq[1]*TS) + \
-        (0.5*np.sign(self.sacsys.controls[0])*MAXSTEP*TS*TS))
         return
     
     def render_forces(self,data):
@@ -347,11 +369,10 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         #get force magnitude
-        fsac = np.array([0.,0.,0.])
+        fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
-           (self.sacvel < 0 and SCALE*position[1] > self.wall) or \
-            (self.sacvel == 0):
-            fsac = np.array([0.,Kp*(self.wall-SCALE*position[1]) \
+           (self.sacvel < 0 and SCALE*position[1] > self.wall):
+            fsac = fsac+np.array([0.,Kp*(self.wall-SCALE*position[1]) \
                              +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
@@ -359,12 +380,6 @@ class PendSimulator:
             #self.i += 1
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
-        elif (self.sacvel < 0 and np.average(self.prevq) < self.usat) or \
-           (self.sacvel > 0 and np.average(self.prevq) > self.usat):
-            fsac = np.array([0.,Kp*(self.usat-np.average(self.prevq)) \
-                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
-            self.sac_marker.color = ColorRGBA(*[1.0, 0.05, 0.05, 1.0])
-            self.i += 1
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
@@ -376,7 +391,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        self.force_pub.publish(OmniFeedback(force=f, position=p))
+        #self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):
