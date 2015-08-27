@@ -66,7 +66,7 @@ SCALE = 16
 Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 MAXSTEP = 35. #m/s^2
-MAXVEL = 2.5 #m/s
+MAXVEL = 4. #m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -284,7 +284,7 @@ class PendSimulator:
         temp.theta = self.system.q[0]
         temp.y = self.system.q[1]
         temp.dtheta = self.system.dq[0]
-        temp.dy = self.system.dq[1]#np.average(self.prevdq)self.system.dq[1]
+        temp.dy = np.average(self.prevdq)#self.system.dq[1]
         temp.sac = self.sacsys.controls[0]
         self.trep_pub.publish(temp)
         
@@ -328,8 +328,8 @@ class PendSimulator:
         qtemp = self.system.q
         proj_func(qtemp)
         if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
-            rospy.loginfo("Success Time: %s"%self.system.t)
-            rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
+            rospy.loginfo("Success Time: %s"%round(self.system.t,2))
+            rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
             self.running_flag = False
         return
@@ -391,7 +391,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        #self.force_pub.publish(OmniFeedback(force=f, position=p))
+        self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):
