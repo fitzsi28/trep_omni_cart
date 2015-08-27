@@ -145,8 +145,8 @@ class PendSimulator:
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 3)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 3)
         self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 3)
-        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 2)
-        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 2)
+        self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 3)
+        self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 3)
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
@@ -288,7 +288,7 @@ class PendSimulator:
         temp.theta = self.system.q[0]
         temp.y = self.system.q[1]
         temp.dtheta = self.system.dq[0]
-        temp.dy = np.average(self.prevdq)
+        temp.dy = self.prevdq
         temp.sac = self.sacsys.controls[0]
         self.trep_pub.publish(temp)
         
