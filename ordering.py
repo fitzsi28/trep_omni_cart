@@ -1,5 +1,6 @@
 import numpy as np
 
+SS = 15 #sample size
 options = np.array([1,2,3,4])
 order = np.random.choice(options,1)
 i1 = 0
@@ -15,20 +16,20 @@ elif order[0] ==3:
 else:
     i4+=1
 
-while order.size < 40:
-    if i1==10:
+while order.size < 4*SS:
+    if i1==SS:
         index = np.where(options==1)[0][0]
         options = np.delete(options,index)
         i1+=1
-    if i2==10:
+    if i2==SS:
         index = np.where(options==2)[0][0]
         options = np.delete(options,index)
         i2+=1
-    if i3==10:
+    if i3==SS:
         index = np.where(options==3)[0][0]
         options = np.delete(options,index)
         i3+=1
-    if i4==10:
+    if i4==SS:
         index = np.where(options==4)[0][0]
         options = np.delete(options,index) 
         i4+=1
