@@ -66,7 +66,7 @@ SCALE = 16
 Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 MAXSTEP = 35. #m/s^2
-MAXVEL = 4. #m/s
+MAXVEL = 4.0 #m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -110,7 +110,7 @@ def build_sac_control(sys):
     return sacsyst
 
 def sat_func(v):
-    f = -15./(1.+np.exp(-2.0*(v-MAXVEL)))+15./(1.+np.exp(2.0*(v+MAXVEL)))
+    f = -10./(1.+np.exp(-1.*(v-MAXVEL)))+10./(1.+np.exp(1.*(v+MAXVEL)))
     return f
 
 class PendSimulator:
