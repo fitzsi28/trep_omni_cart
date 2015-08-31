@@ -6,8 +6,12 @@
 \author{}
 \date{\today}
 \maketitle
+\section{Experiment Organization}
 
+\	\	There will be 10 subjects total. Each subject will be tested under 4 conditions for 10 trials each. The order in which the conditions will be tested will be randomized for each subject, such that half of the subjects will begin with the algorithm under evaluation and half will begin with the control conditions. Each subject will begin with a short training session described in detail below, where they will be briefly introduced to all 4 conditions. Subjects will be allowed to explore the test systems and ask questions.
 
+If the subjects time to success has plateaued after the first 5 trials, subjects will graduate to a more difficult system for the remaining 5 trials.
+\section{Protocol for Individual subjects}
 \begin{enumerate}
 \item Go over consent form with subject, explaining study protocol and goals as outlined on the form.
 \item Demonstration and introduction to software only MDA on phone.
@@ -30,7 +34,7 @@
 \item Generate a randomly ordered list of test conditions. Save with name \textsl{\textsf{subjectcode}}\_order.txt
 \item (For Omni only) Start the ROS package:\\
 \texttt{\$ roslaunch trep\_omni\_cart cart\_pend.launch vis:=true replay:=false}\\ Set up recording of the ROS topics by navigating to the \texttt{trep\_omni\_cart} directory and executing the command:\\ \texttt{\$ ./record.sh data/\textsl{\textsf{subjectcode}}-trial\textsl{\textsf{trialnumber}}}
-\item Complete each trial according to the schedule generated. Each trial will be stopped automatically by the software when $$-0.15<\theta<0.15\ and\ -0.6<\dot{\theta}<0.6$$ or after 50 seconds have elapsed.
+\item Complete each set of trials according to the schedule generated. Each trial will be stopped automatically by the software when $$-0.15<\theta<0.15\ and\ -0.6<\dot{\theta}<0.6$$ or after 50 seconds have elapsed.
 
 \item The time to task completion and SAC score will be recorded at this time.
 \end{enumerate}
