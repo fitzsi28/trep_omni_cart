@@ -60,7 +60,7 @@ TS = 1./5.
 DT2 = 1./300.
 M = 0.1 #kg
 L = 2.0 # m
-B = 0.1 # damping
+B = 0.01 # damping
 g = 9.81 #m/s^2
 SCALE = 16
 Kp = 300.0/SCALE
@@ -328,7 +328,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%self.system.t)
             rospy.loginfo("Final Score: %s"%(self.i/self.n*100))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
@@ -392,7 +392,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        self.force_pub.publish(OmniFeedback(force=f, position=p))
+        #self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):

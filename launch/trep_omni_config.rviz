@@ -11,7 +11,7 @@ Panels:
         - /RobotModel1
         - /RobotModel1/Links1
       Splitter Ratio: 0.811671
-    Tree Height: 775
+    Tree Height: 359
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -120,7 +120,7 @@ Visualization Manager:
       Marker Topic: visualization_marker_array
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -180,5 +180,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1855
-  X: 1665
+  X: 65
   Y: 24
