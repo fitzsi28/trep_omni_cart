@@ -1,5 +1,5 @@
 \documentclass[11pt]{article}
-\usepackage{enumitem}
+\usepackage[margin=1.0in]{geometry}
 
 \begin{document}
 \title{Maxwell's Demon Algorithm Human Subject Protocol}
@@ -8,9 +8,8 @@
 \maketitle
 \section{Experiment Organization}
 
-\	\	There will be 10 subjects total. Each subject will be tested under 4 conditions for 10 trials each. The order in which the conditions will be tested will be randomized for each subject, such that half of the subjects will begin with the algorithm under evaluation and half will begin with the control conditions. Each subject will begin with a short training session described in detail below, where they will be briefly introduced to all 4 conditions. Subjects will be allowed to explore the test systems and ask questions.
+\	\	There will be 10 subjects total. Each subject will be tested under 4 conditions for 10 trials each. Half of the subjects will be randomly selected to begin with the Omni+MDA condition, while the other half will begin with the Omni without MDA. After the first 10 trials, the subjects will be switched to a more difficult system with faster dynamics, continuing with or without MDA based on which group they were randomly placed in. The remaining 3 conditions will be tested in random order. Each subject will begin with a short training session described in detail below, where they will be briefly introduced to all 4 conditions. Subjects will be allowed to explore the test systems and ask questions.
 
-If the subjects time to success has plateaued after the first 5 trials, subjects will graduate to a more difficult system for the remaining 5 trials.
 \section{Protocol for Individual subjects}
 \begin{enumerate}
 \item Go over consent form with subject, explaining study protocol and goals as outlined on the form.
@@ -31,12 +30,18 @@ If the subjects time to success has plateaued after the first 5 trials, subjects
 		\end{enumerate}		  
 	\end{enumerate}
 	
-\item Generate a randomly ordered list of test conditions. Save with name \textsl{\textsf{subjectcode}}\_order.txt
-\item (For Omni only) Start the ROS package:\\
-\texttt{\$ roslaunch trep\_omni\_cart cart\_pend.launch vis:=true replay:=false}\\ Set up recording of the ROS topics by navigating to the \texttt{trep\_omni\_cart} directory and executing the command:\\ \texttt{\$ ./record.sh data/\textsl{\textsf{subjectcode}}-trial\textsl{\textsf{trialnumber}}}
-\item Complete each set of trials according to the schedule generated. Each trial will be stopped automatically by the software when $$-0.15<\theta<0.15\ and\ -0.6<\dot{\theta}<0.6$$ or after 50 seconds have elapsed.
+\item Begin with the Omni, with or without MDA according to a random selection. To start the ROS package:\\
+\texttt{\$ roslaunch trep\_omni\_cart cart\_pend.launch vis:=true replay:=false} \item Set up recording of the ROS topics by navigating to the \texttt{trep\_omni\_cart} directory and executing the command:\\ \texttt{\$ ./record.sh data/\textsl{\textsf{subjectcode}}-trial\textsl{\textsf{trialnumber}}}
+Follow on screen instruction to start and stop recording. 
+\item Each trial will be stopped automatically by the software when $$-0.15<\theta<0.15\ and\ -0.6<\dot{\theta}<0.6$$ or after 50 seconds have elapsed.
 
 \item The time to task completion and SAC score will be recorded at this time.
+\item Repeat steps 5-7 for for 10 trials.
+\item After 10 trials, in the \texttt{trep\_omni\_cart} directory, switch to the higher difficulty system:\\
+\texttt{\$ git checkout Esys}\\
+and complete an additional 5 trials.
+\item Complete the remaining 3 sets of trials in random order, following steps 4-7 for the remaining Omni tests and 6-7 for the touchscreen tests.
+
 \end{enumerate}
 
 
