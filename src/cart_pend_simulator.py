@@ -66,7 +66,7 @@ SCALE = 16
 Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 MAXSTEP = 35. #m/s^2
-MAXVEL = 5.0 #m/s
+MAXVEL = 4.0 #m/s
 BASEFRAME = "base"
 CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
@@ -125,7 +125,7 @@ class PendSimulator:
         self.sacpos = 0.
         self.sacvel = 0.
         self.prevq = np.zeros(5)
-        self.prevdq = np.zeros(20)
+        self.prevdq = np.zeros(30)
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -244,7 +244,7 @@ class PendSimulator:
         self.i = 0.
         self.n = 0.
         self.prevq = np.zeros(5)
-        self.prevdq = np.zeros(20)
+        self.prevdq = np.zeros(30)
         return
 
     def timercb(self, data):
@@ -327,7 +327,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.4 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
