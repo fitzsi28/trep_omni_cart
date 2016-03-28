@@ -328,7 +328,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5 or self.system.t >= 50.0:
+        if self.system.t >= 10.0: #abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
@@ -392,7 +392,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        self.force_pub.publish(OmniFeedback(force=f, position=p))
+        #self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):

@@ -1,0 +1,3 @@
+%time,field.force.x,field.force.y,field.force.z,field.position.x,field.position.y,field.position.z
+1459179991773082013,0.0,0.0,0.0,0.0,0.0,0.0
+1459179993046948150,0.0,0.0,0.0,0.0,0.0,0.0
