@@ -60,7 +60,7 @@ TS = 1./5.
 DT2 = 1./300.
 M = 0.1 #kg
 L = 2.0 # m
-B = 0.01 # damping
+B = 0.1 # damping
 g = 9.81 #m/s^2
 SCALE = 16
 Kp = 300.0/SCALE
@@ -230,6 +230,7 @@ class PendSimulator:
         self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
+        self.u=self.prevdq[1]-self.prevdq[0]
         self.sactrep.q = self.system.q
         self.sactrep.dq = self.system.dq
         self.sacsys.init()
@@ -246,6 +247,15 @@ class PendSimulator:
         self.n = 0.
         self.prevq = np.zeros(5)
         self.prevdq = np.zeros(20)
+        
+        temp = trepsys()
+        temp.sys_time = self.system.t
+        temp.q = [self.system.q[0],self.system.q[1]]
+        temp.dq = [self.system.dq[0], self.system.dq[1]]
+        temp.sac = [self.sacsys.controls[0]]
+        temp.u=[self.u]
+        self.trep_pub.publish(temp)
+        
         return
 
     def timercb(self, data):
@@ -282,11 +292,10 @@ class PendSimulator:
             return
         temp = trepsys()
         temp.sys_time = self.system.t
-        temp.theta = self.system.q[0]
-        temp.y = self.system.q[1]
-        temp.dtheta = self.system.dq[0]
-        temp.dy = self.system.dq[1] #np.average(self.prevdq)
-        temp.sac = self.sacsys.controls[0]
+        temp.q = [self.system.q[0],self.system.q[1]]
+        temp.dq = [self.system.dq[0], self.system.dq[1]]
+        temp.sac = [self.sacsys.controls[0]]
+        temp.u=[self.prevdq[1]-self.prevdq[0]]
         self.trep_pub.publish(temp)
         
         
@@ -344,7 +353,7 @@ class PendSimulator:
         self.sactrep.dq = self.system.dq
         self.sacsys.calc_u()
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
-        
+        self.u = self.mvi.v2
         #convert kinematic acceleration to new velocity&position
         veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
         self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
