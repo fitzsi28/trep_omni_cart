@@ -229,6 +229,7 @@ class PendSimulator:
         self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
+        self.u=self.prevdq[1]-self.prevdq[0]
         self.sactrep.q = self.system.q
         self.sactrep.dq = self.system.dq
         self.sacsys.init()
@@ -245,6 +246,14 @@ class PendSimulator:
         self.n = 0.
         self.prevq = np.zeros(5)
         self.prevdq = np.zeros(30)
+        
+        temp = trepsys()
+        temp.sys_time = self.system.t
+        temp.q = [self.system.q[0],self.system.q[1]]
+        temp.dq = [self.system.dq[0], self.system.dq[1]]
+        temp.sac = [self.sacsys.controls[0]]
+        temp.u=[self.u]
+        self.trep_pub.publish(temp)
         return
 
     def timercb(self, data):
@@ -281,14 +290,12 @@ class PendSimulator:
             return
         temp = trepsys()
         temp.sys_time = self.system.t
-        temp.theta = self.system.q[0]
-        temp.y = self.system.q[1]
-        temp.dtheta = self.system.dq[0]
-        temp.dy = np.average(self.prevdq)#self.system.dq[1]
-        temp.sac = self.sacsys.controls[0]
+        temp.q = [self.system.q[0],self.system.q[1]]
+        temp.dq = [self.system.dq[0], self.system.dq[1]]
+        temp.sac = [self.sacsys.controls[0]]
+        temp.u=[self.u]
         self.trep_pub.publish(temp)
-        
-        
+                      
         # if we successfully integrated, let's publish the point and the tf
         p = PointStamped()
         p.header.stamp = rospy.Time.now()
@@ -327,7 +334,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if self.system.t>=30:#abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
+        if self.system.t>=10:#abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.6 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
@@ -391,7 +398,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        self.force_pub.publish(OmniFeedback(force=f, position=p))
+        #self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):
